@@ -432,6 +432,41 @@
     #file-context-menu { max-width: calc(100vw - 16px); }
     .admin-table-scroll, .file-table-scroll { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
     
+    /* File Card and Row Hover Styling - Guaranteed No Bright White Blowout */
+    .file-grid-card {
+      background-color: var(--card-bg) !important;
+      border: 1px solid var(--card-border) !important;
+      transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+    }
+    html:not(.dark) .file-grid-card:hover {
+      background-color: #f8fafc !important;
+      border-color: #0284c7 !important;
+      box-shadow: 0 6px 16px -2px rgba(2, 132, 199, 0.12) !important;
+    }
+    html.dark .file-grid-card:hover {
+      background-color: #0d0d14 !important;
+      border-color: #0ea5e9 !important;
+      box-shadow: 0 6px 20px -2px rgba(14, 165, 233, 0.25) !important;
+    }
+
+    .file-list-row {
+      transition: background-color 0.15s ease;
+    }
+    html:not(.dark) .file-list-row:hover {
+      background-color: #f1f5f9 !important;
+    }
+    html.dark .file-list-row:hover {
+      background-color: #0d0d14 !important;
+    }
+
+    /* Terminal container styling */
+    #terminal-container .xterm {
+      padding: 4px;
+    }
+    #terminal-container .xterm-viewport {
+      background-color: #000000 !important;
+    }
+
     /* Side preview drawer */
     #file-preview-drawer {
       width: min(540px, 94vw);
@@ -449,7 +484,26 @@
       object-fit: contain;
       border-radius: 0.75rem;
     }
+    /* Desktop Viewport & Application Root Locking */
+    html, body {
+      height: 100%;
+      width: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+    }
+    #app {
+      height: 100%;
+      width: 100%;
+      overflow: hidden;
+    }
+
     @media (max-width: 767px) {
+      html, body, #app {
+        overflow-y: auto !important;
+        height: auto !important;
+        min-height: 100% !important;
+      }
       #file-preview-drawer {
         width: 100vw;
       }
@@ -471,9 +525,9 @@
     }
   </style>
 </head>
-<body class="min-h-screen font-sans antialiased custom-scrollbar selection:bg-sky-500 selection:text-white">
+<body class="h-full w-full overflow-hidden font-sans antialiased custom-scrollbar selection:bg-sky-500 selection:text-white">
 
-  <div id="app"></div>
+  <div id="app" class="h-full w-full overflow-hidden"></div>
 
   <!-- SPA Core Application Logic Script -->
   <script src="/app.js"></script>

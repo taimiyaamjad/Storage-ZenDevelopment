@@ -171,8 +171,8 @@ async function renderPublicShareView(root) {
   const params = new URLSearchParams(window.location.hash.split('?')[1] || '');
   const token = params.get('token');
   root.innerHTML = `
-    <div class="min-h-screen flex items-center justify-center p-4 bg-slate-950">
-      <div class="w-full max-w-xl glass-card p-7 rounded-2xl shadow-2xl border border-slate-800">
+    <div class="h-full min-h-full overflow-y-auto flex items-center justify-center p-4 bg-slate-950 custom-scrollbar">
+      <div class="w-full max-w-xl glass-card p-7 rounded-2xl shadow-2xl border border-slate-800 my-auto">
         <div class="flex items-center gap-3 mb-6">
           <div class="w-11 h-11 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400"><i data-lucide="share-2" class="w-5 h-5"></i></div>
           <div><h1 class="text-lg font-bold text-white">Shared File</h1><p class="text-xs text-slate-500">Secure public share link</p></div>
@@ -419,12 +419,110 @@ function openPublicSharePreview(token, fileName, mimeType) {
   }
 }
 
+async function renderResetPasswordView(root) {
+  const params = new URLSearchParams(window.location.hash.split('?')[1] || '');
+  const token = params.get('token');
+  root.innerHTML = `
+    <div class="h-full min-h-full overflow-y-auto flex items-center justify-center p-4 bg-slate-950 custom-scrollbar">
+      <div class="w-full max-w-md pitch-card p-8 rounded-2xl shadow-2xl border border-slate-800 text-left my-auto">
+        <div class="flex items-center gap-3 mb-6">
+          <div class="w-10 h-10 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400"><i data-lucide="key" class="w-5 h-5"></i></div>
+          <div><h1 class="text-lg font-bold text-white">Reset Password</h1><p class="text-xs text-slate-500">Enter your new account password</p></div>
+        </div>
+        <form onsubmit="handleResetPasswordSubmit(event, '${encodeURIComponent(token || '')}')" class="space-y-4">
+          <div>
+            <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">New Password</label>
+            <input type="password" id="reset-new-pass" required minlength="6" class="w-full pitch-input rounded-xl px-4 py-2.5 text-sm focus:outline-none" placeholder="••••••••">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Confirm New Password</label>
+            <input type="password" id="reset-confirm-pass" required minlength="6" class="w-full pitch-input rounded-xl px-4 py-2.5 text-sm focus:outline-none" placeholder="••••••••">
+          </div>
+          <button type="submit" class="w-full bg-sky-600 hover:bg-sky-500 text-white font-medium py-2.5 rounded-xl text-sm shadow-md shadow-sky-600/25 transition-all">Update Password</button>
+        </form>
+        <div class="mt-4 text-center">
+          <button onclick="window.location.hash=''; renderApp();" class="text-xs text-slate-400 hover:text-white">Back to Login</button>
+        </div>
+      </div>
+    </div>`;
+  if (window.lucide) lucide.createIcons();
+}
+
+async function handleResetPasswordSubmit(e, token) {
+  e.preventDefault();
+  const newPassword = document.getElementById('reset-new-pass').value;
+  const confirmPassword = document.getElementById('reset-confirm-pass').value;
+  if (newPassword !== confirmPassword) {
+    showToast('Passwords do not match.', 'error');
+    return;
+  }
+  try {
+    const res = await fetch('/api/auth/reset-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: decodeURIComponent(token), newPassword, confirmPassword })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Password reset failed.');
+    showToast(data.message, 'success');
+    window.location.hash = '';
+    renderApp();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+function openForgotPasswordModal() {
+  document.getElementById('forgot-pass-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.id = 'forgot-pass-modal';
+  modal.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm';
+  modal.innerHTML = `
+    <div class="pitch-card w-full max-w-md p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2"><i data-lucide="help-circle" class="w-5 h-5 text-sky-500"></i> Forgot Password</h3>
+        <button type="button" onclick="document.getElementById('forgot-pass-modal')?.remove()" class="text-slate-400 hover:text-slate-900 dark:hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+      <p class="text-xs text-slate-600 dark:text-slate-400 mb-4">Enter your registered email address and we will send you a password reset link.</p>
+      <form onsubmit="handleForgotPasswordSubmit(event)" class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold uppercase text-slate-500 dark:text-slate-400 mb-1">Account Email</label>
+          <input type="email" id="forgot-email-input" required class="w-full pitch-input rounded-xl px-4 py-2.5 text-sm focus:outline-none" placeholder="user@domain.com">
+        </div>
+        <div class="flex justify-end gap-2 pt-2">
+          <button type="button" onclick="document.getElementById('forgot-pass-modal')?.remove()" class="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold">Cancel</button>
+          <button type="submit" class="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold">Send Reset Link</button>
+        </div>
+      </form>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  if (window.lucide) lucide.createIcons();
+}
+
+async function handleForgotPasswordSubmit(e) {
+  e.preventDefault();
+  const email = document.getElementById('forgot-email-input').value.trim();
+  try {
+    const res = await fetch('/api/auth/forgot-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email })
+    });
+    const data = await res.json().catch(() => ({}));
+    document.getElementById('forgot-pass-modal')?.remove();
+    showToast(data.message || 'If an account exists with that email, a reset link was sent.', 'success');
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
 async function renderVerifyEmailView(root) {
   const params = new URLSearchParams(window.location.hash.split('?')[1] || '');
   const token = params.get('token');
   root.innerHTML = `
-    <div class="min-h-screen flex items-center justify-center p-4 bg-slate-950">
-      <div class="w-full max-w-md glass-card p-8 rounded-2xl shadow-2xl border border-slate-800 text-center">
+    <div class="h-full min-h-full overflow-y-auto flex items-center justify-center p-4 bg-slate-950 custom-scrollbar">
+      <div class="w-full max-w-md glass-card p-8 rounded-2xl shadow-2xl border border-slate-800 text-center my-auto">
         <div id="verify-email-status" class="text-sm text-slate-300">Verifying your email...</div>
       </div>
     </div>`;
@@ -458,8 +556,8 @@ async function renderVerifyEmailChangeView(root) {
   const params = new URLSearchParams(window.location.hash.split('?')[1] || '');
   const token = params.get('token');
   root.innerHTML = `
-    <div class="min-h-screen flex items-center justify-center p-4 bg-slate-950">
-      <div class="w-full max-w-md glass-card p-8 rounded-2xl shadow-2xl border border-slate-800 text-center">
+    <div class="h-full min-h-full overflow-y-auto flex items-center justify-center p-4 bg-slate-950 custom-scrollbar">
+      <div class="w-full max-w-md glass-card p-8 rounded-2xl shadow-2xl border border-slate-800 text-center my-auto">
         <div id="verify-change-status" class="text-sm text-slate-300">Verifying your new email...</div>
       </div>
     </div>`;
@@ -490,7 +588,7 @@ async function renderVerifyEmailChangeView(root) {
 // ==========================================
 function renderAuthView(container) {
   container.innerHTML = `
-    <div class="min-h-screen flex flex-col items-center justify-center p-4 theme-main-bg transition-colors duration-200">
+    <div class="h-full min-h-full overflow-y-auto flex flex-col items-center justify-center p-4 theme-main-bg transition-colors duration-200 custom-scrollbar">
       
       <!-- Top Theme Switcher on Auth Screen -->
       <div class="w-full max-w-md flex justify-end mb-3">
@@ -500,7 +598,7 @@ function renderAuthView(container) {
         </button>
       </div>
 
-      <div class="w-full max-w-md pitch-card p-8 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 tab-pane-enter">
+      <div class="w-full max-w-md pitch-card p-8 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 tab-pane-enter my-auto">
         
         <div class="text-center mb-6">
           <div class="inline-flex p-3 rounded-2xl bg-sky-500/15 text-sky-600 dark:text-sky-400 mb-3 border border-sky-500/20 shadow-sm">
@@ -568,10 +666,13 @@ function renderAuthView(container) {
             </button>
           </div>
         </form>
-
       </div>
     </div>
   `;
+
+  if (window.lucide) {
+    lucide.createIcons();
+  }
 }
 
 function switchAuthTab(tab) {
@@ -644,9 +745,9 @@ function renderDashboardLayout(container) {
   const isDark = AppState.isDarkMode;
 
   container.innerHTML = `
-    <div class="min-h-screen flex flex-col md:flex-row theme-main-bg text-slate-900 dark:text-slate-100 transition-colors duration-200">
+    <div class="h-full md:h-screen w-full flex flex-col md:flex-row theme-main-bg text-slate-900 dark:text-slate-100 transition-colors duration-200 overflow-hidden">
       <!-- Sidebar -->
-      <aside id="sidebar" class="w-full md:w-64 theme-sidebar border-r flex flex-col justify-between p-4 flex-shrink-0 transition-colors duration-200">
+      <aside id="sidebar" class="w-full md:w-64 h-auto md:h-screen theme-sidebar border-r flex flex-col justify-between p-4 flex-shrink-0 transition-colors duration-200 md:overflow-y-auto custom-scrollbar">
         <div>
           <!-- Brand Logo -->
           <div class="brand-block flex items-center gap-3 px-2 py-3 mb-6">
@@ -725,9 +826,9 @@ function renderDashboardLayout(container) {
       </aside>
 
       <!-- Main Content Container -->
-      <main class="flex-1 flex flex-col min-w-0 overflow-hidden theme-main-bg transition-colors duration-200">
+      <main class="flex-1 flex flex-col min-w-0 h-full overflow-hidden theme-main-bg transition-colors duration-200">
         <!-- Top Nav Bar -->
-        <header id="main-header" class="theme-header border-b px-4 sm:px-6 py-3.5 backdrop-blur-md space-y-3 transition-colors duration-200">
+        <header id="main-header" class="theme-header border-b px-4 sm:px-6 py-3.5 backdrop-blur-md space-y-3 shrink-0 transition-colors duration-200">
           <div class="flex items-center justify-between gap-3">
             <div class="flex items-center gap-3 min-w-0">
               <h1 class="text-lg font-bold text-slate-900 dark:text-white capitalize flex items-center gap-2 truncate">
@@ -746,7 +847,7 @@ function renderDashboardLayout(container) {
         </header>
 
         <!-- Main Body Tab Views -->
-        <div id="tab-content-area" class="flex-1 overflow-y-auto p-6 custom-scrollbar tab-pane-enter">
+        <div id="tab-content-area" class="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 custom-scrollbar tab-pane-enter">
           <!-- Rendered dynamically -->
         </div>
       </main>
@@ -920,11 +1021,11 @@ async function renderFileManagerTab(container) {
             <input type="text" id="file-search-input" oninput="handleFileSearch(event)" placeholder="Search files..." class="pitch-input rounded-xl pl-9 pr-4 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-sky-500 w-48">
           </div>
 
-          <div class="flex bg-slate-100 dark:bg-slate-900 p-1 rounded-xl border border-slate-200 dark:border-slate-800">
-            <button onclick="setFileViewMode('grid')" class="p-1.5 rounded-lg ${AppState.viewMode === 'grid' ? 'bg-sky-600 text-white' : 'text-slate-500 dark:text-slate-400'}" title="Grid View">
+          <div class="flex bg-slate-100 dark:bg-slate-900 p-1 rounded-xl border border-slate-200 dark:border-slate-800" id="file-view-toggle-group">
+            <button id="view-mode-grid-btn" onclick="setFileViewMode('grid')" class="p-1.5 rounded-lg transition-all ${AppState.viewMode === 'grid' ? 'bg-sky-600 text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}" title="Grid View">
               <i data-lucide="grid" class="w-4 h-4"></i>
             </button>
-            <button onclick="setFileViewMode('list')" class="p-1.5 rounded-lg ${AppState.viewMode === 'list' ? 'bg-sky-600 text-white' : 'text-slate-500 dark:text-slate-400'}" title="List View">
+            <button id="view-mode-list-btn" onclick="setFileViewMode('list')" class="p-1.5 rounded-lg transition-all ${AppState.viewMode === 'list' ? 'bg-sky-600 text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}" title="List View">
               <i data-lucide="list" class="w-4 h-4"></i>
             </button>
           </div>
@@ -1126,19 +1227,19 @@ function renderFileItems() {
       const iconColor = file.isDirectory ? 'text-amber-500 dark:text-amber-400' : 'text-sky-600 dark:text-sky-400';
 
       return `
-        <div class="glass-card p-4 rounded-xl relative group hover:border-sky-500/50 transition-all cursor-pointer ${isSelected ? 'border-sky-500 bg-sky-500/10' : ''}" onclick="toggleSelectFile('${file.path}', event)">
+        <div class="file-grid-card p-4 rounded-xl relative group cursor-pointer ${isSelected ? 'ring-2 ring-sky-500 bg-sky-500/15' : ''}" onclick="toggleSelectFile('${file.path}', event)">
           
           <div class="flex items-center justify-between mb-3">
-            <input type="checkbox" ${isSelected ? 'checked' : ''} onclick="event.stopPropagation(); toggleSelectFile('${file.path}')" class="rounded border-slate-300 dark:border-slate-700 text-sky-600">
+            <input type="checkbox" ${isSelected ? 'checked' : ''} onclick="event.stopPropagation(); toggleSelectFile('${file.path}')" class="w-4 h-4 rounded border-slate-300 dark:border-slate-700 text-sky-600 accent-sky-500">
             
             <!-- Context Menu Button -->
-            <button onclick="event.stopPropagation(); openFileContextMenu('${file.path}', ${file.isDirectory}, event)" class="opacity-0 group-hover:opacity-100 p-1 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800">
+            <button onclick="event.stopPropagation(); openFileContextMenu('${file.path}', ${file.isDirectory}, event)" class="opacity-0 group-hover:opacity-100 p-1 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 transition-opacity">
               <i data-lucide="more-vertical" class="w-4 h-4"></i>
             </button>
           </div>
 
           <div class="flex flex-col items-center text-center" onclick="event.stopPropagation(); ${file.isDirectory ? `navigateToPath('${file.path}')` : `openFilePreview('${file.path}')`}">
-            <i data-lucide="${icon}" class="w-10 h-10 ${iconColor} mb-2"></i>
+            <i data-lucide="${icon}" class="w-10 h-10 ${iconColor} mb-2 drop-shadow-sm"></i>
             <div class="text-xs font-bold text-slate-900 dark:text-white truncate w-full" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</div>
             <div class="text-[11px] font-medium text-slate-600 dark:text-slate-400 mt-1">${file.isDirectory ? 'Folder' : formatBytes(file.size)}</div>
           </div>
@@ -1149,7 +1250,7 @@ function renderFileItems() {
     // List View
     container.className = 'glass-card rounded-2xl overflow-hidden divide-y divide-slate-200 dark:divide-slate-800/60';
     container.innerHTML = `
-      <div class="px-4 py-3 bg-slate-100 dark:bg-slate-950/60 flex items-center text-xs font-bold text-slate-700 dark:text-slate-300">
+      <div class="px-4 py-3 bg-slate-100 dark:bg-[#030305] flex items-center text-xs font-bold text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-800">
         <span class="w-8"></span>
         <span class="flex-1">Name</span>
         <span class="w-32">Size</span>
@@ -1162,19 +1263,19 @@ function renderFileItems() {
         const iconColor = file.isDirectory ? 'text-amber-500 dark:text-amber-400' : 'text-sky-600 dark:text-sky-400';
 
         return `
-          <div class="px-4 py-3 flex items-center text-xs hover:bg-slate-50 dark:hover:bg-slate-850 transition-all ${isSelected ? 'bg-sky-500/10' : ''}">
-            <input type="checkbox" ${isSelected ? 'checked' : ''} onclick="toggleSelectFile('${file.path}')" class="w-4 h-4 rounded border-slate-300 dark:border-slate-700 text-sky-600 mr-3">
+          <div class="file-list-row px-4 py-3 flex items-center text-xs cursor-pointer ${isSelected ? 'bg-sky-500/15' : ''}">
+            <input type="checkbox" ${isSelected ? 'checked' : ''} onclick="event.stopPropagation(); toggleSelectFile('${file.path}')" class="w-4 h-4 rounded border-slate-300 dark:border-slate-700 text-sky-600 accent-sky-500 mr-3">
             
-            <div class="flex-1 flex items-center gap-3 cursor-pointer" onclick="${file.isDirectory ? `navigateToPath('${file.path}')` : `openFilePreview('${file.path}')`}">
-              <i data-lucide="${icon}" class="w-5 h-5 ${iconColor}"></i>
-              <span class="font-semibold text-slate-900 dark:text-white hover:text-sky-600 dark:hover:text-sky-400">${escapeHtml(file.name)}</span>
+            <div class="flex-1 flex items-center gap-3 min-w-0" onclick="${file.isDirectory ? `navigateToPath('${file.path}')` : `openFilePreview('${file.path}')`}">
+              <i data-lucide="${icon}" class="w-5 h-5 ${iconColor} shrink-0"></i>
+              <span class="font-semibold text-slate-900 dark:text-white hover:text-sky-600 dark:hover:text-sky-400 truncate">${escapeHtml(file.name)}</span>
             </div>
 
             <span class="w-32 font-medium text-slate-600 dark:text-slate-400">${file.isDirectory ? '--' : formatBytes(file.size)}</span>
             <span class="w-40 font-medium text-slate-600 dark:text-slate-400">${new Date(file.mtime).toLocaleString()}</span>
 
             <div class="w-16 text-right">
-              <button onclick="openFileContextMenu('${file.path}', ${file.isDirectory}, event)" class="p-1 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800">
+              <button onclick="event.stopPropagation(); openFileContextMenu('${file.path}', ${file.isDirectory}, event)" class="p-1 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800">
                 <i data-lucide="more-vertical" class="w-4 h-4"></i>
               </button>
             </div>
@@ -1226,6 +1327,17 @@ function toggleSelectFile(filePath) {
 
 function setFileViewMode(mode) {
   AppState.viewMode = mode;
+  const gridBtn = document.getElementById('view-mode-grid-btn');
+  const listBtn = document.getElementById('view-mode-list-btn');
+  if (gridBtn && listBtn) {
+    if (mode === 'grid') {
+      gridBtn.className = 'p-1.5 rounded-lg transition-all bg-sky-600 text-white shadow-sm';
+      listBtn.className = 'p-1.5 rounded-lg transition-all text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white';
+    } else {
+      listBtn.className = 'p-1.5 rounded-lg transition-all bg-sky-600 text-white shadow-sm';
+      gridBtn.className = 'p-1.5 rounded-lg transition-all text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white';
+    }
+  }
   renderFileItems();
 }
 
@@ -2574,7 +2686,7 @@ async function renderShareLinksTab(container) {
           <span class="w-28 text-right">Actions</span>
         </div>
         ${links.map(l => `
-          <div class="px-4 py-3 flex items-center text-xs hover:bg-slate-50 dark:hover:bg-slate-850 transition-all">
+          <div class="file-list-row px-4 py-3 flex items-center text-xs">
             <div class="flex-1 truncate font-semibold text-slate-900 dark:text-white">
               ${escapeHtml(l.file_path)}
             </div>
@@ -2586,10 +2698,10 @@ async function renderShareLinksTab(container) {
               </span>
             </span>
             <div class="w-28 text-right flex items-center justify-end gap-2">
-              <button onclick="navigator.clipboard.writeText('${l.shareUrl}'); showToast('Share URL copied!', 'success');" class="p-1.5 text-slate-500 dark:text-slate-400 hover:text-sky-600 dark:hover:text-sky-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800" title="Copy Link">
+              <button onclick="navigator.clipboard.writeText('${l.shareUrl}'); showToast('Share URL copied!', 'success');" class="p-1.5 text-slate-500 dark:text-slate-400 hover:text-sky-600 dark:hover:text-sky-400 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800" title="Copy Link">
                 <i data-lucide="copy" class="w-4 h-4"></i>
               </button>
-              <button onclick="revokeShareLink('${l.id}')" class="p-1.5 text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800" title="Revoke Link">
+              <button onclick="revokeShareLink('${l.id}')" class="p-1.5 text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800" title="Revoke Link">
                 <i data-lucide="trash-2" class="w-4 h-4"></i>
               </button>
             </div>
@@ -2823,22 +2935,32 @@ async function handleEmailChangeRequest(e) {
 // 7. SYSTEM ADMIN PORTAL (VPS PTY Console, Users, SMTP, Logs)
 // ==========================================
 async function renderAdminPortalTab(container) {
+  const getTabClass = (tabKey) => {
+    const isActive = AppState.adminTab === tabKey;
+    if (isActive) {
+      return 'px-4 py-2 rounded-lg text-xs font-bold transition-all bg-amber-600 text-white shadow-md shadow-amber-600/30';
+    }
+    return 'px-4 py-2 rounded-lg text-xs font-bold transition-all bg-slate-100 dark:bg-[#0c0c12] text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-[#181822]';
+  };
+
+  const isConsoleActive = AppState.adminTab === 'console';
+
   container.innerHTML = `
     <div class="space-y-6">
       <!-- Admin Navigation Sub-Tabs -->
-      <div class="flex flex-wrap items-center gap-2 border-b border-slate-800 pb-3">
-        <button onclick="switchAdminSubTab('overview')" class="px-4 py-2 rounded-lg text-xs font-bold transition-all ${AppState.adminTab === 'overview' ? 'bg-amber-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}">Overview Stats</button>
-        <button onclick="switchAdminSubTab('users')" class="px-4 py-2 rounded-lg text-xs font-bold transition-all ${AppState.adminTab === 'users' ? 'bg-amber-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}">User Management</button>
-        <button onclick="switchAdminSubTab('storage')" class="px-4 py-2 rounded-lg text-xs font-bold transition-all ${AppState.adminTab === 'storage' ? 'bg-amber-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}">Storage</button>
-        <button onclick="switchAdminSubTab('download-monitor')" class="px-4 py-2 rounded-lg text-xs font-bold transition-all ${AppState.adminTab === 'download-monitor' ? 'bg-amber-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}">URL Downloads</button>
-        <button onclick="switchAdminSubTab('ip-history')" class="px-4 py-2 rounded-lg text-xs font-bold transition-all ${AppState.adminTab === 'ip-history' ? 'bg-amber-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}">IP Tracking</button>
-        <button onclick="switchAdminSubTab('smtp')" class="px-4 py-2 rounded-lg text-xs font-bold transition-all ${AppState.adminTab === 'smtp' ? 'bg-amber-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}">SMTP Config</button>
-        <button onclick="switchAdminSubTab('details')" class="px-4 py-2 rounded-lg text-xs font-bold transition-all ${AppState.adminTab === 'details' ? 'bg-amber-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}">Details</button>
-        <button onclick="switchAdminSubTab('settings')" class="px-4 py-2 rounded-lg text-xs font-bold transition-all ${AppState.adminTab === 'settings' ? 'bg-amber-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}">App Settings</button>
-        <button onclick="switchAdminSubTab('audit-logs')" class="px-4 py-2 rounded-lg text-xs font-bold transition-all ${AppState.adminTab === 'audit-logs' ? 'bg-amber-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}">Audit Logs</button>
+      <div id="admin-subtab-nav" class="flex flex-wrap items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
+        <button data-admin-subtab="overview" onclick="switchAdminSubTab('overview')" class="${getTabClass('overview')}">Overview Stats</button>
+        <button data-admin-subtab="users" onclick="switchAdminSubTab('users')" class="${getTabClass('users')}">User Management</button>
+        <button data-admin-subtab="storage" onclick="switchAdminSubTab('storage')" class="${getTabClass('storage')}">Storage</button>
+        <button data-admin-subtab="download-monitor" onclick="switchAdminSubTab('download-monitor')" class="${getTabClass('download-monitor')}">URL Downloads</button>
+        <button data-admin-subtab="ip-history" onclick="switchAdminSubTab('ip-history')" class="${getTabClass('ip-history')}">IP Tracking</button>
+        <button data-admin-subtab="smtp" onclick="switchAdminSubTab('smtp')" class="${getTabClass('smtp')}">SMTP Config</button>
+        <button data-admin-subtab="details" onclick="switchAdminSubTab('details')" class="${getTabClass('details')}">Details</button>
+        <button data-admin-subtab="settings" onclick="switchAdminSubTab('settings')" class="${getTabClass('settings')}">App Settings</button>
+        <button data-admin-subtab="audit-logs" onclick="switchAdminSubTab('audit-logs')" class="${getTabClass('audit-logs')}">Audit Logs</button>
         
         <!-- VPS Console Button -->
-        <button onclick="switchAdminSubTab('console')" class="ml-auto bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 shadow-lg shadow-emerald-600/20">
+        <button data-admin-subtab="console" onclick="switchAdminSubTab('console')" class="ml-auto ${isConsoleActive ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/30 ring-2 ring-emerald-400/50' : 'bg-emerald-600/15 hover:bg-emerald-600 text-emerald-600 dark:text-emerald-400 hover:text-white border border-emerald-500/30'} px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all">
           <i data-lucide="terminal" class="w-4 h-4"></i> VPS SSH Console
         </button>
       </div>
@@ -2855,6 +2977,26 @@ async function renderAdminPortalTab(container) {
 
 function switchAdminSubTab(tab) {
   AppState.adminTab = tab;
+  const navContainer = document.getElementById('admin-subtab-nav');
+  if (navContainer) {
+    const buttons = navContainer.querySelectorAll('[data-admin-subtab]');
+    buttons.forEach(btn => {
+      const subtab = btn.getAttribute('data-admin-subtab');
+      if (subtab === tab) {
+        if (subtab === 'console') {
+          btn.className = 'ml-auto bg-emerald-600 text-white px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 shadow-lg shadow-emerald-600/30 ring-2 ring-emerald-400/50 transition-all';
+        } else {
+          btn.className = 'px-4 py-2 rounded-lg text-xs font-bold transition-all bg-amber-600 text-white shadow-md shadow-amber-600/30';
+        }
+      } else {
+        if (subtab === 'console') {
+          btn.className = 'ml-auto bg-emerald-600/15 hover:bg-emerald-600 text-emerald-600 dark:text-emerald-400 hover:text-white border border-emerald-500/30 px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all';
+        } else {
+          btn.className = 'px-4 py-2 rounded-lg text-xs font-bold transition-all bg-slate-100 dark:bg-[#0c0c12] text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-[#181822]';
+        }
+      }
+    });
+  }
   renderAdminSubTabContent();
 }
 
@@ -3045,11 +3187,14 @@ async function renderAdminSubTabContent() {
             ${logs.map(log => `<tr><td class="p-3 text-slate-500 whitespace-nowrap">${new Date(log.timestamp).toLocaleString()}</td><td class="p-3 text-slate-200">${escapeHtml(log.username || 'System')}</td><td class="p-3"><span class="px-2 py-1 rounded-md bg-amber-500/10 text-amber-300">${escapeHtml(log.action)}</span></td><td class="p-3 font-mono text-sky-300">${escapeHtml(log.ip_address || '—')}</td><td class="p-3 text-slate-400 max-w-[420px] truncate" title="${escapeHtml(log.details || '')}">${escapeHtml(log.details || '—')}</td></tr>`).join('') || '<tr><td colspan="5" class="p-8 text-center text-slate-500">No audit logs found.</td></tr>'}
           </tbody></table></div>
         </div>`;
+    } else if (AppState.adminTab === 'console') {
+      renderTerminalConsole(area);
+      return;
     } else {
-      area.innerHTML = '<div class="glass-card p-6 rounded-2xl border border-slate-800 text-sm text-slate-500">This admin section is not available yet.</div>';
+      area.innerHTML = '<div class="glass-card p-6 rounded-2xl border border-slate-200 dark:border-slate-800 text-sm text-slate-500">This admin section is not available yet.</div>';
     }
   } catch (err) {
-    area.innerHTML = `<div class="glass-card p-6 rounded-2xl border border-red-500/20 bg-red-500/5"><div class="text-sm font-semibold text-red-300">Failed to load this admin section</div><div class="text-xs text-slate-400 mt-2">${escapeHtml(err.message)}</div><button onclick="renderAdminSubTabContent()" class="mt-4 px-3 py-2 rounded-lg bg-slate-800 text-slate-200 text-xs font-semibold">Retry</button></div>`;
+    area.innerHTML = `<div class="glass-card p-6 rounded-2xl border border-red-500/20 bg-red-500/5"><div class="text-sm font-semibold text-red-400">Failed to load this admin section</div><div class="text-xs text-slate-400 mt-2">${escapeHtml(err.message)}</div><button onclick="renderAdminSubTabContent()" class="mt-4 px-3 py-2 rounded-lg bg-slate-800 text-slate-200 text-xs font-semibold">Retry</button></div>`;
   }
 
   if (window.lucide) lucide.createIcons();
@@ -3143,53 +3288,161 @@ async function handleSaveAppSettings(e) {
 
 function renderTerminalConsole(container) {
   container.innerHTML = `
-    <div class="glass-card p-4 rounded-2xl border border-slate-800 space-y-3">
-      <div class="flex items-center justify-between">
-        <h3 class="text-sm font-bold text-white flex items-center gap-2">
-          <i data-lucide="terminal" class="w-4 h-4 text-emerald-400"></i> VPS SSH Terminal Session
-        </h3>
-        <span class="text-xs text-emerald-400 font-mono flex items-center gap-1">
-          <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span> Live PTY Connected
-        </span>
+    <div class="glass-card p-5 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-3">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-500">
+            <i data-lucide="terminal" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-slate-900 dark:text-white">VPS SSH Terminal Session</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400">Interactive live bash shell for administrative server control.</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-3">
+          <span id="terminal-status-badge" class="text-xs text-amber-500 font-mono flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/20">
+            <span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span> Connecting...
+          </span>
+          <button onclick="initXtermTerminal()" class="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition-colors">
+            <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Reconnect
+          </button>
+        </div>
       </div>
 
       <!-- Xterm Terminal Wrapper Container -->
-      <div id="terminal-container" class="w-full h-96 bg-black rounded-xl p-2 border border-slate-800 overflow-hidden"></div>
+      <div id="terminal-container" class="w-full h-[460px] bg-black rounded-xl p-3 border border-slate-800 overflow-hidden shadow-2xl"></div>
     </div>
   `;
+
+  if (window.lucide) lucide.createIcons();
 
   setTimeout(() => {
     initXtermTerminal();
   }, 100);
 }
 
+let activeTerminalSocket = null;
+let activeTerminalInstance = null;
+
 function initXtermTerminal() {
   const container = document.getElementById('terminal-container');
-  if (!container || !window.Terminal) return;
+  const badge = document.getElementById('terminal-status-badge');
+  if (!container) return;
 
-  const term = new Terminal({
+  // Cleanup existing session if open
+  if (activeTerminalSocket) {
+    try { activeTerminalSocket.close(); } catch (e) {}
+    activeTerminalSocket = null;
+  }
+  if (activeTerminalInstance) {
+    try { activeTerminalInstance.dispose(); } catch (e) {}
+    activeTerminalInstance = null;
+  }
+  container.innerHTML = '';
+
+  const TermClass = window.Terminal;
+  if (!TermClass) {
+    container.innerHTML = '<div class="p-4 text-xs font-mono text-red-400">Terminal library (xterm.js) is loading... Please click Reconnect in a moment.</div>';
+    return;
+  }
+
+  const term = new TermClass({
     cursorBlink: true,
     fontSize: 13,
-    fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+    fontFamily: 'Menlo, Monaco, Consolas, "Courier New", monospace',
+    lineHeight: 1.2,
     theme: {
       background: '#000000',
-      foreground: '#f8fafc'
+      foreground: '#f8fafc',
+      cursor: '#38bdf8',
+      selectionBackground: '#0284c7',
+      black: '#1e293b',
+      red: '#ef4444',
+      green: '#10b981',
+      yellow: '#f59e0b',
+      blue: '#0ea5e9',
+      magenta: '#d946ef',
+      cyan: '#06b6d4',
+      white: '#f8fafc'
     }
   });
 
-  const fitAddon = new FitAddon.FitAddon();
-  term.loadAddon(fitAddon);
+  activeTerminalInstance = term;
+
+  let fitAddon = null;
+  if (typeof FitAddon !== 'undefined' && FitAddon.FitAddon) {
+    fitAddon = new FitAddon.FitAddon();
+  } else if (typeof window.FitAddon !== 'undefined') {
+    fitAddon = typeof window.FitAddon === 'function' ? new window.FitAddon() : new window.FitAddon.FitAddon();
+  }
+
+  if (fitAddon) {
+    term.loadAddon(fitAddon);
+  }
+
   term.open(container);
-  fitAddon.fit();
+  if (fitAddon) {
+    try { fitAddon.fit(); } catch (e) {}
+  }
 
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsUrl = `${protocol}//${window.location.host}/api/admin/console?token=${AppState.token}`;
-  const ws = new WebSocket(wsUrl);
+  const wsUrl = `${protocol}//${window.location.host}/api/admin/console?token=${encodeURIComponent(AppState.token || '')}`;
 
-  ws.onmessage = (event) => term.write(event.data);
-  term.onData((data) => ws.readyState === WebSocket.OPEN && ws.send(data));
+  if (badge) {
+    badge.className = 'text-xs text-amber-500 font-mono flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/20';
+    badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span> Connecting...';
+  }
 
-  window.addEventListener('resize', () => fitAddon.fit());
+  try {
+    const ws = new WebSocket(wsUrl);
+    activeTerminalSocket = ws;
+
+    ws.onopen = () => {
+      if (badge) {
+        badge.className = 'text-xs text-emerald-500 font-mono flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20';
+        badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-500"></span> Live SSH Connected';
+      }
+      term.focus();
+    };
+
+    ws.onmessage = (event) => {
+      term.write(event.data);
+    };
+
+    ws.onerror = () => {
+      if (badge) {
+        badge.className = 'text-xs text-red-500 font-mono flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-500/10 border border-red-500/20';
+        badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-red-500"></span> Disconnected';
+      }
+      term.write('\r\n\x1b[31m[WebSocket Connection Error: Check server status or token]\x1b[0m\r\n');
+    };
+
+    ws.onclose = () => {
+      if (badge) {
+        badge.className = 'text-xs text-slate-400 font-mono flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-500/10 border border-slate-500/20';
+        badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-slate-500"></span> Session Closed';
+      }
+    };
+
+    term.onData((data) => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(data);
+      }
+    });
+
+    const resizeHandler = () => {
+      if (fitAddon) {
+        try { fitAddon.fit(); } catch (e) {}
+      }
+    };
+    window.addEventListener('resize', resizeHandler);
+  } catch (err) {
+    if (badge) {
+      badge.className = 'text-xs text-red-500 font-mono flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-500/10 border border-red-500/20';
+      badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-red-500"></span> Error';
+    }
+    term.write(`\r\n\x1b[31mFailed to open WebSocket: ${err.message}\x1b[0m\r\n`);
+  }
 }
 
 function openCreateUserModal() {
