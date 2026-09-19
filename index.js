@@ -20,7 +20,8 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ noServer: true });
 
-const PORT = process.env.PORT || 3000;
+// Always use port 3000 in development/AI Studio container. On VPS production deployment, APP_PORT or custom PORT is supported.
+const PORT = process.env.APP_PORT || (process.env.PORT && process.env.PORT !== '8080' ? Number(process.env.PORT) : 3000);
 const HOST = process.env.HOST || '0.0.0.0';
 
 // Only trust forwarding headers from the configured reverse proxy. For the

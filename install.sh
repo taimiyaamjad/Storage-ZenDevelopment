@@ -114,9 +114,33 @@ if [[ "$CONFIRM" =~ ^[Nn] ]]; then
 fi
 
 echo ""
-echo -e "${BLUE}==> [1/7] Updating system packages and installing prerequisites...${NC}"
-apt-get update -y
-apt-get install -y curl wget git build-essential python3 sqlite3 ffmpeg libsqlite3-dev openssl nginx ca-certificates gnupg
+echo -e "${BLUE}==> [1/7] Checking system packages and installing prerequisites...${NC}"
+# Recover dpkg state if interrupted by previous run or overlayfs cross-device issues
+dpkg --configure -a 2>/dev/null || true
+rm -f /var/cache/apt/archives/git*.deb 2>/dev/null || true
+
+# Refresh package lists
+apt-get update -y || true
+
+# Safely check and only install packages that are not already present.
+# This avoids dpkg hard link / EXDEV errors when upgrading existing tools (like git) on overlayfs/containers.
+PREREQ_PKGS=(curl wget git build-essential python3 sqlite3 ffmpeg libsqlite3-dev openssl nginx ca-certificates gnupg)
+TO_INSTALL=()
+for pkg in "${PREREQ_PKGS[@]}"; do
+  if ! dpkg -s "$pkg" 2>/dev/null | grep -q "Status: install ok installed"; then
+    TO_INSTALL+=("$pkg")
+  fi
+done
+
+if [ ${#TO_INSTALL[@]} -gt 0 ]; then
+  echo "Installing missing dependencies: ${TO_INSTALL[*]}..."
+  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-upgrade "${TO_INSTALL[@]}" || {
+    echo -e "${YELLOW}[INFO] Attempting to fix broken packages...${NC}"
+    apt-get --fix-broken install -y || true
+  }
+else
+  echo -e "${GREEN}All system prerequisites are already present.${NC}"
+fi
 
 echo -e "${BLUE}==> [2/7] Ensuring Node.js 20+ LTS is installed...${NC}"
 if ! command -v node >/dev/null 2>&1 || [ "$(node -v | cut -d'.' -f1 | tr -d 'v')" -lt 18 ]; then
@@ -176,9 +200,9 @@ EOL
 
 echo -e "${GREEN}Created .env with secure random keys.${NC}"
 
-echo -e "${BLUE}==> [5/7] Installing npm dependencies & compiling sqlite3...${NC}"
+echo -e "${BLUE}==> [5/7] Installing npm dependencies & preparing sqlite3...${NC}"
 npm install --production --no-audit --no-fund
-npm rebuild sqlite3
+npm rebuild sqlite3 2>/dev/null || true
 
 echo -e "${BLUE}==> [6/7] Creating Systemd background service...${NC}"
 SERVICE_FILE="/etc/systemd/system/vps-storage.service"
