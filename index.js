@@ -11,13 +11,17 @@ const fileRoutes = require('./src/routes/fileRoutes');
 const shareRoutes = require('./src/routes/shareRoutes');
 const adminRoutes = require('./src/routes/adminRoutes');
 const publicRoutes = require('./src/routes/publicRoutes');
+const apiKeyRoutes = require('./src/routes/apiKeyRoutes');
+const blobRoutes = require('./src/routes/blobRoutes');
+const s3Routes = require('./src/routes/s3Routes');
 const setupConsoleWebSocket = require('./src/services/consoleService');
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ noServer: true });
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 3000;
+const HOST = process.env.HOST || '0.0.0.0';
 
 // Only trust forwarding headers from the configured reverse proxy. For the
 // normal Nginx-on-the-same-VPS deployment, loopback is sufficient. Set
@@ -30,6 +34,12 @@ app.use(cors());
 app.use(express.json({ limit: '500mb' }));
 app.use(express.urlencoded({ extended: true, limit: '500mb' }));
 
+// Easy VPS Installer Script Route (direct curl access: curl -fsSL http://vps/install.sh | bash)
+app.get(['/install.sh', '/api/public/install.sh'], (req, res) => {
+  res.setHeader('Content-Type', 'text/x-shellscript');
+  res.sendFile(path.join(__dirname, 'install.sh'));
+});
+
 // Static files (Frontend build output)
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -39,6 +49,9 @@ app.use('/api/auth', authRoutes);
 app.use('/api/files', fileRoutes);
 app.use('/api/share', shareRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/keys', apiKeyRoutes);
+app.use('/api/v1/blob', blobRoutes);
+app.use('/api/s3', s3Routes);
 
 // Health check API
 app.get('/api/health', (req, res) => {
@@ -71,10 +84,10 @@ app.use((req, res, next) => {
 // Start server after DB initialization
 initDatabase()
   .then(() => {
-    server.listen(PORT, '127.0.0.1', () => {
+    server.listen(PORT, HOST, () => {
       console.log(`===================================================`);
-      console.log(`  VPS SFTP File Manager is running on port ${PORT}`);
-      console.log(`  App URL: http://127.0.0.1:${PORT}`);
+      console.log(`  VPS SFTP Cloud & S3 Cluster running on ${HOST}:${PORT}`);
+      console.log(`  App URL: http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
       console.log(`===================================================`);
     });
   })

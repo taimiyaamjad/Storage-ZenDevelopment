@@ -485,40 +485,40 @@ async function renderVerifyEmailChangeView(root) {
 // ==========================================
 function renderAuthView(container) {
   container.innerHTML = `
-    <div class="min-h-screen flex items-center justify-center p-4 bg-slate-950">
-      <div class="w-full max-w-md glass-card p-8 rounded-2xl shadow-2xl border border-slate-800">
+    <div class="min-h-screen flex items-center justify-center p-4 bg-[#020203]">
+      <div class="w-full max-w-md pitch-card p-8 rounded-2xl shadow-2xl border border-[#1c1c24] tab-pane-enter">
         
         <div class="text-center mb-8">
-          <div class="inline-flex p-3 rounded-2xl bg-sky-500/10 text-sky-400 mb-3 border border-sky-500/20">
-            <i data-lucide="server" class="w-8 h-8"></i>
+          <div class="inline-flex p-3.5 rounded-2xl bg-gradient-to-br from-cyan-500/20 to-sky-500/10 text-cyan-400 mb-3 border border-cyan-500/30 shadow-lg shadow-cyan-500/10">
+            <i data-lucide="hard-drive" class="w-8 h-8"></i>
           </div>
-          <h1 class="text-2xl font-bold text-white tracking-tight">VPS SFTP Cloud</h1>
-          <p class="text-slate-400 text-sm mt-1">Production VPS File Manager & Admin Portal</p>
+          <h1 class="text-2xl font-bold text-white tracking-tight">ZenStorage</h1>
+          <p class="text-neutral-400 text-xs mt-1">VPS SFTP Cloud & Free S3/Blob API Cluster</p>
         </div>
 
-        <div class="flex border-b border-slate-800 mb-6">
-          <button id="tab-login-btn" onclick="switchAuthTab('login')" class="flex-1 py-2 text-sm font-semibold text-sky-400 border-b-2 border-sky-400">Login</button>
-          <button id="tab-register-btn" onclick="switchAuthTab('register')" class="flex-1 py-2 text-sm font-semibold text-slate-400 hover:text-white">Register</button>
+        <div class="flex border-b border-[#1c1c24] mb-6">
+          <button id="tab-login-btn" onclick="switchAuthTab('login')" class="flex-1 py-2 text-sm font-semibold text-cyan-400 border-b-2 border-cyan-400 transition-all">Login</button>
+          <button id="tab-register-btn" onclick="switchAuthTab('register')" class="flex-1 py-2 text-sm font-semibold text-neutral-400 hover:text-white transition-all">Register</button>
         </div>
 
         <!-- Login Form -->
         <form id="auth-login-form" onsubmit="handleLoginSubmit(event)">
           <div class="space-y-4">
             <div>
-              <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Username or Email</label>
-              <input type="text" id="login-input-user" required class="w-full bg-slate-900/80 border border-slate-700/80 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500" placeholder="example or user@domain.com">
+              <label class="block text-xs font-semibold uppercase text-neutral-400 mb-1">Username or Email</label>
+              <input type="text" id="login-input-user" required class="w-full pitch-input rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none" placeholder="example or user@domain.com">
             </div>
 
             <div>
-              <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Password</label>
-              <input type="password" id="login-input-pass" required class="w-full bg-slate-900/80 border border-slate-700/80 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500" placeholder="••••••••">
+              <label class="block text-xs font-semibold uppercase text-neutral-400 mb-1">Password</label>
+              <input type="password" id="login-input-pass" required class="w-full pitch-input rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none" placeholder="••••••••">
             </div>
 
             <div class="flex justify-end">
-              <button type="button" onclick="openForgotPasswordModal()" class="text-xs text-sky-400 hover:underline">Forgot password?</button>
+              <button type="button" onclick="openForgotPasswordModal()" class="text-xs text-cyan-400 hover:underline">Forgot password?</button>
             </div>
 
-            <button type="submit" class="w-full bg-sky-600 hover:bg-sky-500 text-white font-medium py-2.5 rounded-lg text-sm shadow-lg shadow-sky-600/30 transition-all flex items-center justify-center gap-2">
+            <button type="submit" class="w-full bg-gradient-to-r from-sky-600 to-cyan-600 hover:from-sky-500 hover:to-cyan-500 text-white font-medium py-2.5 rounded-xl text-sm shadow-lg shadow-cyan-600/30 transition-all flex items-center justify-center gap-2">
               <i data-lucide="log-in" class="w-4 h-4"></i> Sign In
             </button>
           </div>
@@ -528,27 +528,27 @@ function renderAuthView(container) {
         <form id="auth-register-form" onsubmit="handleRegisterSubmit(event)" class="hidden">
           <div class="space-y-3">
             <div>
-              <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Full Name</label>
-              <input type="text" id="reg-name" required class="w-full bg-slate-900/80 border border-slate-700/80 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500" placeholder="example">
+              <label class="block text-xs font-semibold uppercase text-neutral-400 mb-1">Full Name</label>
+              <input type="text" id="reg-name" required class="w-full pitch-input rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none" placeholder="example">
             </div>
             <div>
-              <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Username</label>
-              <input type="text" id="reg-username" required class="w-full bg-slate-900/80 border border-slate-700/80 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500" placeholder="example123">
+              <label class="block text-xs font-semibold uppercase text-neutral-400 mb-1">Username</label>
+              <input type="text" id="reg-username" required class="w-full pitch-input rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none" placeholder="example123">
             </div>
             <div>
-              <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Email Address</label>
-              <input type="email" id="reg-email" required class="w-full bg-slate-900/80 border border-slate-700/80 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500" placeholder="example@gmail.com">
+              <label class="block text-xs font-semibold uppercase text-neutral-400 mb-1">Email Address</label>
+              <input type="email" id="reg-email" required class="w-full pitch-input rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none" placeholder="example@gmail.com">
             </div>
             <div>
-              <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Password</label>
-              <input type="password" id="reg-password" required minlength="6" class="w-full bg-slate-900/80 border border-slate-700/80 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500" placeholder="••••••••">
+              <label class="block text-xs font-semibold uppercase text-neutral-400 mb-1">Password</label>
+              <input type="password" id="reg-password" required minlength="6" class="w-full pitch-input rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none" placeholder="••••••••">
             </div>
             <div>
-              <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Confirm Password</label>
-              <input type="password" id="reg-confirm" required class="w-full bg-slate-900/80 border border-slate-700/80 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500" placeholder="••••••••">
+              <label class="block text-xs font-semibold uppercase text-neutral-400 mb-1">Confirm Password</label>
+              <input type="password" id="reg-confirm" required class="w-full pitch-input rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none" placeholder="••••••••">
             </div>
 
-            <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2.5 rounded-lg text-sm shadow-lg shadow-emerald-600/30 transition-all flex items-center justify-center gap-2 mt-2">
+            <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2.5 rounded-xl text-sm shadow-lg shadow-emerald-600/30 transition-all flex items-center justify-center gap-2 mt-2">
               <i data-lucide="user-plus" class="w-4 h-4"></i> Create Account
             </button>
           </div>
@@ -568,13 +568,13 @@ function switchAuthTab(tab) {
   if (tab === 'login') {
     loginForm.classList.remove('hidden');
     regForm.classList.add('hidden');
-    loginBtn.className = 'flex-1 py-2 text-sm font-semibold text-sky-400 border-b-2 border-sky-400';
-    regBtn.className = 'flex-1 py-2 text-sm font-semibold text-slate-400 hover:text-white';
+    loginBtn.className = 'flex-1 py-2 text-sm font-semibold text-cyan-400 border-b-2 border-cyan-400 transition-all';
+    regBtn.className = 'flex-1 py-2 text-sm font-semibold text-neutral-400 hover:text-white transition-all';
   } else {
     loginForm.classList.add('hidden');
     regForm.classList.remove('hidden');
-    regBtn.className = 'flex-1 py-2 text-sm font-semibold text-sky-400 border-b-2 border-sky-400';
-    loginBtn.className = 'flex-1 py-2 text-sm font-semibold text-slate-400 hover:text-white';
+    regBtn.className = 'flex-1 py-2 text-sm font-semibold text-cyan-400 border-b-2 border-cyan-400 transition-all';
+    loginBtn.className = 'flex-1 py-2 text-sm font-semibold text-neutral-400 hover:text-white transition-all';
   }
 }
 
@@ -647,23 +647,29 @@ function renderDashboardLayout(container) {
 
           <!-- Nav Items -->
           <nav class="space-y-1">
-            <button onclick="navigateTab('dashboard')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${AppState.currentTab === 'dashboard' ? 'bg-sky-600 text-white' : 'text-slate-400 hover:bg-slate-900 hover:text-white'}">
+            <button onclick="navigateTab('dashboard')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${AppState.currentTab === 'dashboard' ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/30' : 'text-neutral-400 hover:bg-[#121217] hover:text-white'}">
               <i data-lucide="layout-dashboard" class="w-4 h-4"></i> Dashboard
             </button>
-            <button onclick="navigateTab('files')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${AppState.currentTab === 'files' ? 'bg-sky-600 text-white' : 'text-slate-400 hover:bg-slate-900 hover:text-white'}">
+            <button onclick="navigateTab('files')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${AppState.currentTab === 'files' ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/30' : 'text-neutral-400 hover:bg-[#121217] hover:text-white'}">
               <i data-lucide="folder" class="w-4 h-4"></i> File Manager
             </button>
-            <button onclick="navigateTab('shares')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${AppState.currentTab === 'shares' ? 'bg-sky-600 text-white' : 'text-slate-400 hover:bg-slate-900 hover:text-white'}">
+            <button onclick="navigateTab('s3cluster')" class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${AppState.currentTab === 's3cluster' ? 'bg-gradient-to-r from-sky-600 to-cyan-600 text-white shadow-lg shadow-cyan-600/30' : 'text-neutral-400 hover:bg-[#121217] hover:text-white'}">
+              <span class="flex items-center gap-3">
+                <i data-lucide="cloud-lightning" class="w-4 h-4 text-cyan-400"></i> S3 & Blob API
+              </span>
+              <span class="px-1.5 py-0.5 text-[10px] font-bold rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">Cluster</span>
+            </button>
+            <button onclick="navigateTab('shares')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${AppState.currentTab === 'shares' ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/30' : 'text-neutral-400 hover:bg-[#121217] hover:text-white'}">
               <i data-lucide="share-2" class="w-4 h-4"></i> Share Links
             </button>
-            <button onclick="navigateTab('profile')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${AppState.currentTab === 'profile' ? 'bg-sky-600 text-white' : 'text-slate-400 hover:bg-slate-900 hover:text-white'}">
+            <button onclick="navigateTab('profile')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${AppState.currentTab === 'profile' ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/30' : 'text-neutral-400 hover:bg-[#121217] hover:text-white'}">
               <i data-lucide="user" class="w-4 h-4"></i> Profile & IP Info
             </button>
 
             ${AppState.user && AppState.user.role === 'admin' ? `
-              <div class="pt-4 mt-4 border-t border-slate-800">
+              <div class="pt-4 mt-4 border-t border-[#1a1a22]">
                 <span class="px-3 text-[10px] uppercase font-bold text-sky-400 tracking-wider">Admin Portal</span>
-                <button onclick="navigateTab('admin')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all mt-1 ${AppState.currentTab === 'admin' ? 'bg-amber-600 text-white' : 'text-amber-400 hover:bg-slate-900'}">
+                <button onclick="navigateTab('admin')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all mt-1 ${AppState.currentTab === 'admin' ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/30' : 'text-amber-400 hover:bg-[#121217]'}">
                   <i data-lucide="shield-alert" class="w-4 h-4"></i> System Admin
                 </button>
               </div>
@@ -672,32 +678,32 @@ function renderDashboardLayout(container) {
         </div>
 
         <!-- Storage Quota Widget -->
-        <div class="desktop-quota mt-8 pt-4 border-t border-slate-800 space-y-3">
-          <div id="sidebar-quota-widget" class="glass-card p-3 rounded-xl border border-slate-800">
-            <div class="flex justify-between text-xs text-slate-400 mb-1">
+        <div class="desktop-quota mt-8 pt-4 border-t border-[#1a1a22] space-y-3">
+          <div id="sidebar-quota-widget" class="pitch-card p-3 rounded-xl border border-[#1b1b22]">
+            <div class="flex justify-between text-xs text-neutral-400 mb-1">
               <span>Storage Used</span>
               <span id="quota-percent-text">0%</span>
             </div>
-            <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
-              <div id="quota-bar" class="bg-sky-500 h-full rounded-full transition-all" style="width: 0%"></div>
+            <div class="w-full bg-[#16161c] rounded-full h-2 overflow-hidden">
+              <div id="quota-bar" class="bg-gradient-to-r from-sky-500 to-cyan-400 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
             </div>
-            <div class="text-[11px] text-slate-400 mt-2 text-center" id="quota-detail-text">
+            <div class="text-[11px] text-neutral-400 mt-2 text-center" id="quota-detail-text">
               Loading...
             </div>
           </div>
 
           <div id="mobile-account" class="flex items-center justify-between px-2 pt-2">
             <div class="flex items-center gap-2">
-              <div class="w-8 h-8 rounded-full bg-sky-500/20 text-sky-400 flex items-center justify-center text-xs font-bold uppercase">
+              <div class="w-8 h-8 rounded-full bg-sky-500/20 text-sky-400 flex items-center justify-center text-xs font-bold uppercase border border-sky-500/30">
                 ${AppState.user.username.substring(0, 2)}
               </div>
               <div class="text-xs">
                 <div class="font-bold text-white truncate max-w-[100px]">${escapeHtml(AppState.user.name)}</div>
-                <div class="text-slate-400 capitalize">${AppState.user.role}</div>
+                <div class="text-neutral-400 capitalize">${AppState.user.role}</div>
               </div>
             </div>
 
-            <button onclick="logoutUser()" title="Logout" class="p-2 text-slate-400 hover:text-red-400 rounded-lg hover:bg-slate-900 transition-all">
+            <button onclick="logoutUser()" title="Logout" class="p-2 text-neutral-400 hover:text-red-400 rounded-lg hover:bg-[#15151b] transition-all">
               <i data-lucide="log-out" class="w-4 h-4"></i>
             </button>
           </div>
@@ -705,18 +711,18 @@ function renderDashboardLayout(container) {
       </aside>
 
       <!-- Main Content Container -->
-      <main class="flex-1 flex flex-col min-w-0 overflow-hidden">
+      <main class="flex-1 flex flex-col min-w-0 overflow-hidden bg-[#020203]">
         <!-- Top Nav Bar -->
-        <header id="main-header" class="bg-slate-950/80 border-b border-slate-800 px-4 sm:px-6 py-4 backdrop-blur-md space-y-3">
+        <header id="main-header" class="bg-[#050507]/90 border-b border-[#181820] px-4 sm:px-6 py-4 backdrop-blur-md space-y-3">
           <div class="flex items-center justify-between gap-3">
             <div class="flex items-center gap-3 min-w-0">
               <h1 class="text-lg font-bold text-white capitalize flex items-center gap-2 truncate">
-                ${AppState.currentTab === 'files' ? 'File Manager' : AppState.currentTab}
+                ${AppState.currentTab === 'files' ? 'File Manager' : AppState.currentTab === 's3cluster' ? 'S3 & Vercel Blob Cluster API' : AppState.currentTab}
               </h1>
             </div>
 
             <div class="flex items-center gap-3 shrink-0">
-              <button onclick="toggleDarkMode()" class="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-all">
+              <button onclick="toggleDarkMode()" class="p-2 text-neutral-400 hover:text-white rounded-lg hover:bg-[#15151b] transition-all">
                 <i data-lucide="${AppState.isDarkMode ? 'sun' : 'moon'}" class="w-5 h-5"></i>
               </button>
             </div>
@@ -725,7 +731,7 @@ function renderDashboardLayout(container) {
         </header>
 
         <!-- Main Body Tab Views -->
-        <div id="tab-content-area" class="flex-1 overflow-y-auto p-6 custom-scrollbar">
+        <div id="tab-content-area" class="flex-1 overflow-y-auto p-6 custom-scrollbar tab-pane-enter">
           <!-- Rendered dynamically -->
         </div>
       </main>
@@ -830,10 +836,17 @@ function renderTabContent() {
   const area = document.getElementById('tab-content-area');
   if (!area) return;
 
+  // Smooth entrance animation
+  area.classList.remove('tab-pane-enter');
+  void area.offsetWidth; // trigger reflow
+  area.classList.add('tab-pane-enter');
+
   if (AppState.currentTab === 'dashboard') {
     renderDashboardTab(area);
   } else if (AppState.currentTab === 'files') {
     renderFileManagerTab(area);
+  } else if (AppState.currentTab === 's3cluster') {
+    renderS3ClusterTab(area);
   } else if (AppState.currentTab === 'shares') {
     renderShareLinksTab(area);
   } else if (AppState.currentTab === 'profile') {
@@ -1721,6 +1734,780 @@ async function loadUrlDownloadJobs() {
 }
 
 // ==========================================
+// 4.5. S3 & VERCEL BLOB API CLUSTER COMPONENT
+// ==========================================
+let currentCodeSnippetTab = 'curl';
+let currentPlaygroundMode = 'blob';
+let playgroundSelectedFile = null;
+
+async function renderS3ClusterTab(container) {
+  const origin = window.location.origin;
+  const s3Endpoint = `${origin}/api/s3`;
+  const blobEndpoint = `${origin}/api/v1/blob`;
+  const installCmd = `curl -fsSL ${origin}/install.sh | sudo bash`;
+
+  container.innerHTML = `
+    <div class="space-y-6 tab-pane-enter">
+      <!-- Header Banner -->
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 rounded-2xl bg-gradient-to-r from-cyan-950/40 via-sky-950/20 to-black border border-cyan-500/20 shadow-2xl">
+        <div class="flex items-start gap-4">
+          <div class="w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shrink-0 shadow-lg shadow-cyan-500/10">
+            <i data-lucide="cloud-lightning" class="w-6 h-6 animate-pulse"></i>
+          </div>
+          <div>
+            <div class="flex flex-wrap items-center gap-2">
+              <h2 class="text-xl font-bold text-white tracking-tight">S3 Cluster & Vercel Blob API</h2>
+              <span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Free & Active</span>
+              <span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">Zero Egress Fees</span>
+            </div>
+            <p class="text-xs text-neutral-400 mt-1 max-w-2xl leading-relaxed">
+              Use your VPS storage as an AWS S3-compatible object store and Vercel Blob cluster for free. Connect your Next.js, Node.js, Python, or mobile apps using standard S3 and Blob client libraries.
+            </p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2 shrink-0">
+          <button onclick="openCreateApiKeyModal()" class="inline-flex items-center gap-2 bg-gradient-to-r from-sky-500 to-cyan-500 hover:from-sky-400 hover:to-cyan-400 text-black font-bold text-xs px-4 py-2.5 rounded-xl shadow-lg shadow-cyan-500/25 transition-all transform hover:scale-[1.02]">
+            <i data-lucide="key" class="w-4 h-4"></i> Create API Key
+          </button>
+          <button onclick="renderS3ClusterTab(document.getElementById('tab-content-area'))" class="p-2.5 bg-[#121217] hover:bg-[#1a1a22] text-neutral-300 rounded-xl border border-[#22222a] transition-all" title="Refresh">
+            <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Quick VPS Installer Banner -->
+      <div class="p-4 rounded-2xl bg-[#07070a] border border-cyan-500/20 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 shadow-lg">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-xl bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 flex items-center justify-center font-mono font-bold text-xs shrink-0">
+            <i data-lucide="terminal" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <div class="text-xs font-semibold text-white flex items-center gap-2">
+              Automated Interactive VPS Setup Installer
+              <span class="text-[10px] px-1.5 py-0.5 bg-cyan-950 text-cyan-300 rounded border border-cyan-800 font-bold">1-Command Setup</span>
+            </div>
+            <div class="text-[11px] text-neutral-400 font-mono select-all mt-0.5">${escapeHtml(installCmd)}</div>
+          </div>
+        </div>
+        <button onclick="copyToClipboard('${escapeHtml(installCmd)}', this, 'Copied Bash Command!')" class="shrink-0 text-xs font-medium px-3.5 py-2 bg-[#121218] hover:bg-[#1c1c24] text-cyan-300 hover:text-white rounded-xl border border-cyan-500/30 transition-all flex items-center gap-2">
+          <i data-lucide="copy" class="w-3.5 h-3.5"></i> Copy Installer
+        </button>
+      </div>
+
+      <!-- Live Cluster Status & Endpoints Cards -->
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <!-- Card 1: S3 Cluster -->
+        <div class="pitch-card pitch-card-hover p-5 rounded-2xl border border-[#1b1b22]">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-xs font-semibold text-neutral-400 uppercase tracking-wider">S3 Cluster API</span>
+            <span class="flex items-center gap-1 text-[10px] text-emerald-400 font-bold">
+              <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span> Live
+            </span>
+          </div>
+          <div class="text-sm font-bold text-white mb-1">AWS S3 Compatible</div>
+          <p class="text-[11px] text-neutral-400 mb-3">PutObject, GetObject, ListObjectsV2, Range Requests, Cyberduck & Boto3.</p>
+          <div class="p-2 rounded-lg bg-[#040406] border border-[#171720] flex items-center justify-between gap-2">
+            <span class="font-mono text-[10px] text-cyan-300 truncate">${s3Endpoint}</span>
+            <button onclick="copyToClipboard('${s3Endpoint}', this, 'Copied S3 Endpoint!')" class="text-neutral-400 hover:text-white p-1" title="Copy S3 Endpoint">
+              <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Card 2: Vercel Blob -->
+        <div class="pitch-card pitch-card-hover p-5 rounded-2xl border border-[#1b1b22]">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-xs font-semibold text-neutral-400 uppercase tracking-wider">Vercel Blob API</span>
+            <span class="flex items-center gap-1 text-[10px] text-cyan-400 font-bold">
+              <span class="w-2 h-2 rounded-full bg-cyan-400"></span> Ready
+            </span>
+          </div>
+          <div class="text-sm font-bold text-white mb-1">Blob SDK Ready</div>
+          <p class="text-[11px] text-neutral-400 mb-3">Drop-in substitute for @vercel/blob. Streaming uploads, instant public/token access.</p>
+          <div class="p-2 rounded-lg bg-[#040406] border border-[#171720] flex items-center justify-between gap-2">
+            <span class="font-mono text-[10px] text-cyan-300 truncate">${blobEndpoint}</span>
+            <button onclick="copyToClipboard('${blobEndpoint}', this, 'Copied Blob Endpoint!')" class="text-neutral-400 hover:text-white p-1" title="Copy Blob Endpoint">
+              <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Card 3: Storage Used -->
+        <div class="pitch-card pitch-card-hover p-5 rounded-2xl border border-[#1b1b22]">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-xs font-semibold text-neutral-400 uppercase tracking-wider">Cluster Storage</span>
+            <i data-lucide="database" class="w-4 h-4 text-sky-400"></i>
+          </div>
+          <div class="text-xl font-bold text-white mb-1" id="cluster-storage-stat">Loading...</div>
+          <div class="w-full bg-[#16161e] h-1.5 rounded-full overflow-hidden mb-2">
+            <div id="cluster-storage-bar" class="bg-gradient-to-r from-sky-500 to-cyan-400 h-full rounded-full transition-all" style="width: 0%"></div>
+          </div>
+          <p class="text-[10px] text-neutral-500" id="cluster-quota-detail">Shared with your account quota</p>
+        </div>
+
+        <!-- Card 4: Total Requests -->
+        <div class="pitch-card pitch-card-hover p-5 rounded-2xl border border-[#1b1b22]">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-xs font-semibold text-neutral-400 uppercase tracking-wider">API Activity</span>
+            <i data-lucide="activity" class="w-4 h-4 text-emerald-400"></i>
+          </div>
+          <div class="text-xl font-bold text-white mb-1" id="cluster-requests-stat">0</div>
+          <p class="text-[11px] text-neutral-400">Total API calls served with zero egress fees or bandwidth limits.</p>
+        </div>
+      </div>
+
+      <!-- API Keys Management Section -->
+      <div class="pitch-card p-6 rounded-2xl border border-[#1b1b22]">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
+          <div>
+            <h3 class="text-base font-bold text-white flex items-center gap-2">
+              <i data-lucide="shield-check" class="w-4 h-4 text-cyan-400"></i> API Access Keys
+            </h3>
+            <p class="text-xs text-neutral-400 mt-0.5">Authenticate requests using Bearer tokens, x-api-key, or AWS S3 Signature credentials.</p>
+          </div>
+          <button onclick="openCreateApiKeyModal()" class="bg-[#121218] hover:bg-[#1a1a24] text-white text-xs font-semibold px-4 py-2.5 rounded-xl border border-[#242432] flex items-center gap-2 transition-all">
+            <i data-lucide="plus" class="w-3.5 h-3.5 text-cyan-400"></i> New API Key
+          </button>
+        </div>
+
+        <div id="api-keys-table-container" class="overflow-x-auto">
+          <div class="py-8 text-center text-xs text-neutral-500">Loading API keys...</div>
+        </div>
+      </div>
+
+      <!-- Interactive In-Browser API Tester / Playground -->
+      <div class="pitch-card p-6 rounded-2xl border border-[#1b1b22]">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
+          <div>
+            <h3 class="text-base font-bold text-white flex items-center gap-2">
+              <i data-lucide="play-circle" class="w-4 h-4 text-emerald-400"></i> Live In-Browser API Playground
+            </h3>
+            <p class="text-xs text-neutral-400 mt-0.5">Test real upload and retrieval requests against your cluster right now.</p>
+          </div>
+          <div class="flex items-center gap-1 p-1 bg-[#050508] border border-[#1b1b24] rounded-xl">
+            <button onclick="switchPlaygroundMode('blob')" id="btn-pg-blob" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-cyan-600 text-white transition-all">
+              Vercel Blob PUT
+            </button>
+            <button onclick="switchPlaygroundMode('s3')" id="btn-pg-s3" class="px-3 py-1.5 text-xs font-semibold rounded-lg text-neutral-400 hover:text-white transition-all">
+              AWS S3 PutObject
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <!-- Playground Input Form -->
+          <div class="space-y-4">
+            <div>
+              <label class="block text-xs font-semibold uppercase text-neutral-400 mb-1" id="pg-path-label">Destination Path / Filename</label>
+              <input type="text" id="pg-filename" value="test-uploads/hello-zen.txt" class="w-full pitch-input rounded-xl px-3.5 py-2.5 text-xs text-white">
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold uppercase text-neutral-400 mb-1">Content or Payload</label>
+              <textarea id="pg-payload" rows="4" class="w-full pitch-input rounded-xl px-3.5 py-2.5 text-xs text-white font-mono" placeholder="Enter text payload or select a file below...">Hello from Zen VPS Storage & S3 Cluster! Timestamp: ${new Date().toISOString()}</textarea>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-3">
+              <label class="px-3 py-2 bg-[#121218] hover:bg-[#1a1a24] border border-[#22222e] text-neutral-300 text-xs font-medium rounded-xl cursor-pointer flex items-center gap-2 transition-all">
+                <i data-lucide="file-up" class="w-3.5 h-3.5 text-cyan-400"></i> Choose Local File (Optional)
+                <input type="file" id="pg-local-file" class="hidden" onchange="handlePlaygroundFileSelect(event)">
+              </label>
+              <span id="pg-file-name-preview" class="text-xs text-neutral-400 truncate max-w-[220px]">No file chosen (using text payload)</span>
+            </div>
+
+            <button onclick="executePlaygroundUpload()" id="btn-pg-submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs py-2.5 rounded-xl shadow-lg shadow-emerald-600/25 transition-all flex items-center justify-center gap-2">
+              <i data-lucide="send" class="w-4 h-4"></i> Execute API Upload Request
+            </button>
+          </div>
+
+          <!-- Playground Output Response -->
+          <div class="flex flex-col justify-between p-4 rounded-xl bg-[#040406] border border-[#181822]">
+            <div>
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-bold text-neutral-400 uppercase tracking-wider">Live Response Payload</span>
+                <span id="pg-res-status" class="text-xs font-mono font-bold text-neutral-500">Ready</span>
+              </div>
+              <pre id="pg-res-json" class="text-[11px] font-mono text-cyan-300 bg-[#020203] p-3 rounded-lg border border-[#14141b] overflow-x-auto max-h-[220px] custom-scrollbar">// Click "Execute API Upload Request" to test live endpoint...</pre>
+            </div>
+
+            <div id="pg-preview-action" class="mt-4 pt-3 border-t border-[#14141c] hidden flex items-center justify-between">
+              <span class="text-xs text-neutral-400">Test Object Uploaded:</span>
+              <a id="pg-preview-link" href="#" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-cyan-600/20 hover:bg-cyan-600 text-cyan-300 hover:text-white rounded-lg text-xs font-semibold transition-all">
+                <i data-lucide="external-link" class="w-3.5 h-3.5"></i> Open Direct URL
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Code Snippets & SDK Guides Section -->
+      <div class="pitch-card p-6 rounded-2xl border border-[#1b1b22]">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <div>
+            <h3 class="text-base font-bold text-white flex items-center gap-2">
+              <i data-lucide="code-2" class="w-4 h-4 text-sky-400"></i> Integration Code Examples
+            </h3>
+            <p class="text-xs text-neutral-400 mt-0.5">Copy production-ready code for your stack.</p>
+          </div>
+          <div class="flex flex-wrap gap-1 p-1 bg-[#050508] border border-[#1a1a24] rounded-xl">
+            <button onclick="switchCodeSnippetTab('curl')" id="tab-code-curl" class="px-3 py-1 text-xs font-semibold rounded-lg bg-sky-600 text-white transition-all">cURL</button>
+            <button onclick="switchCodeSnippetTab('blob-js')" id="tab-code-blob-js" class="px-3 py-1 text-xs font-semibold rounded-lg text-neutral-400 hover:text-white transition-all">Vercel Blob (JS)</button>
+            <button onclick="switchCodeSnippetTab('s3-python')" id="tab-code-s3-python" class="px-3 py-1 text-xs font-semibold rounded-lg text-neutral-400 hover:text-white transition-all">Python (Boto3)</button>
+            <button onclick="switchCodeSnippetTab('s3-node')" id="tab-code-s3-node" class="px-3 py-1 text-xs font-semibold rounded-lg text-neutral-400 hover:text-white transition-all">AWS SDK v3 (Node)</button>
+            <button onclick="switchCodeSnippetTab('nextjs')" id="tab-code-nextjs" class="px-3 py-1 text-xs font-semibold rounded-lg text-neutral-400 hover:text-white transition-all">Next.js</button>
+          </div>
+        </div>
+
+        <div class="relative">
+          <pre id="code-snippet-pre" class="text-xs font-mono text-neutral-200 bg-[#040406] p-4 rounded-xl border border-[#171722] overflow-x-auto max-h-[300px] custom-scrollbar"></pre>
+          <button onclick="copyCurrentCodeSnippet(this)" class="absolute top-3 right-3 text-xs px-3 py-1.5 bg-[#14141c] hover:bg-[#1e1e28] text-neutral-300 hover:text-white rounded-lg border border-[#252534] flex items-center gap-1.5 transition-all">
+            <i data-lucide="copy" class="w-3.5 h-3.5"></i> Copy Code
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  if (window.lucide) lucide.createIcons();
+  await loadS3ClusterData();
+  switchCodeSnippetTab(currentCodeSnippetTab);
+}
+
+async function loadS3ClusterData() {
+  const container = document.getElementById('api-keys-table-container');
+  try {
+    const data = await apiRequest('/keys');
+    const keys = data.keys || [];
+    const stats = data.stats || {};
+
+    const used = Number(stats.storageUsed || AppState.user.usedStorageBytes || 0);
+    const total = Number(stats.storageQuota || AppState.user.storage_quota_bytes || 10737418240);
+    const percent = Math.min(100, Math.round((used / total) * 100));
+
+    const sStorageStat = document.getElementById('cluster-storage-stat');
+    const sStorageBar = document.getElementById('cluster-storage-bar');
+    const sQuotaDetail = document.getElementById('cluster-quota-detail');
+    const sRequestsStat = document.getElementById('cluster-requests-stat');
+
+    if (sStorageStat) sStorageStat.innerText = formatBytes(used);
+    if (sStorageBar) sStorageBar.style.width = `${percent}%`;
+    if (sQuotaDetail) sQuotaDetail.innerText = `${formatBytes(used)} of ${formatBytes(total)} (${percent}%)`;
+    if (sRequestsStat) sRequestsStat.innerText = Number(stats.totalRequests || 0).toLocaleString();
+
+    if (!container) return;
+
+    if (!keys.length) {
+      container.innerHTML = `
+        <div class="py-12 text-center">
+          <div class="w-12 h-12 rounded-2xl bg-[#121218] border border-[#22222e] flex items-center justify-center text-neutral-400 mx-auto mb-3">
+            <i data-lucide="key" class="w-6 h-6"></i>
+          </div>
+          <h4 class="text-sm font-semibold text-white">No API Keys Generated Yet</h4>
+          <p class="text-xs text-neutral-400 max-w-sm mx-auto mt-1 mb-4">Create your first API key to connect your applications, upload files via curl, or mount S3 storage.</p>
+          <button onclick="openCreateApiKeyModal()" class="bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold px-4 py-2 rounded-xl transition-all">
+            Create API Key
+          </button>
+        </div>
+      `;
+      if (window.lucide) lucide.createIcons();
+      return;
+    }
+
+    container.innerHTML = `
+      <table class="w-full text-left border-collapse text-xs">
+        <thead>
+          <tr class="border-b border-[#181822] text-neutral-400 font-semibold uppercase tracking-wider text-[10px]">
+            <th class="py-3 px-3">Name</th>
+            <th class="py-3 px-3">Access Key ID</th>
+            <th class="py-3 px-3">Permissions</th>
+            <th class="py-3 px-3">Requests</th>
+            <th class="py-3 px-3">Created</th>
+            <th class="py-3 px-3">Last Used</th>
+            <th class="py-3 px-3 text-right">Action</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-[#121218]">
+          ${keys.map(k => `
+            <tr class="hover:bg-[#07070a] transition-colors">
+              <td class="py-3 px-3 font-semibold text-white flex items-center gap-2">
+                <i data-lucide="key" class="w-3.5 h-3.5 text-cyan-400"></i> ${escapeHtml(k.name)}
+              </td>
+              <td class="py-3 px-3 font-mono text-cyan-300">
+                <span class="bg-[#030305] px-2 py-1 rounded border border-[#171722] inline-flex items-center gap-1.5">
+                  ${escapeHtml(k.key_id)}
+                  <button onclick="copyToClipboard('${escapeHtml(k.key_id)}', this, 'Key ID copied!')" class="text-neutral-400 hover:text-white">
+                    <i data-lucide="copy" class="w-3 h-3"></i>
+                  </button>
+                </span>
+              </td>
+              <td class="py-3 px-3">
+                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${k.permissions === 'full' ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30' : k.permissions === 'read_write' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'bg-neutral-800 text-neutral-300 border border-neutral-700'}">
+                  ${escapeHtml(k.permissions)}
+                </span>
+              </td>
+              <td class="py-3 px-3 text-neutral-300 font-mono">${Number(k.requests_count || 0).toLocaleString()}</td>
+              <td class="py-3 px-3 text-neutral-400">${new Date(k.created_at).toLocaleDateString()}</td>
+              <td class="py-3 px-3 text-neutral-400">${k.last_used_at ? new Date(k.last_used_at).toLocaleDateString() : 'Never'}</td>
+              <td class="py-3 px-3 text-right">
+                <button onclick="revokeApiKey(${k.id}, '${escapeHtml(k.name)}')" class="text-red-400 hover:text-red-300 hover:bg-red-500/10 px-2 py-1 rounded transition-all">
+                  Revoke
+                </button>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+    if (window.lucide) lucide.createIcons();
+  } catch (err) {
+    if (container) {
+      container.innerHTML = `<div class="p-4 text-xs text-red-400">Failed to load API keys: ${escapeHtml(err.message)}</div>`;
+    }
+  }
+}
+
+function openCreateApiKeyModal() {
+  const existing = document.getElementById('active-custom-modal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'active-custom-modal';
+  modal.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm modal-backdrop-enter';
+  modal.innerHTML = `
+    <div class="pitch-card w-full max-w-md p-6 rounded-2xl border border-[#22222e] shadow-2xl modal-box-enter">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <i data-lucide="key" class="w-4 h-4 text-cyan-400"></i> Create New API Key
+        </h3>
+        <button onclick="closeActiveModal()" class="text-neutral-400 hover:text-white p-1 rounded-lg">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <form onsubmit="handleCreateApiKey(event)" class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold uppercase text-neutral-400 mb-1">Key Description / Name</label>
+          <input type="text" id="new-key-name" required placeholder="e.g. Next.js Production, Backup Script" class="w-full pitch-input rounded-xl px-3.5 py-2.5 text-xs text-white">
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold uppercase text-neutral-400 mb-1">Permissions Scope</label>
+          <select id="new-key-permissions" class="w-full pitch-input rounded-xl px-3.5 py-2.5 text-xs text-white">
+            <option value="full">Full Access (Read, Write, Delete)</option>
+            <option value="read_write">Read & Write (Upload & Download)</option>
+            <option value="read">Read Only (Download Only)</option>
+          </select>
+        </div>
+
+        <div class="p-3 rounded-xl bg-cyan-950/30 border border-cyan-500/20 text-xs text-cyan-300">
+          This key grants programmatic access to upload and manage files in your S3 & Blob storage cluster.
+        </div>
+
+        <div class="flex items-center justify-end gap-2 pt-2">
+          <button type="button" onclick="closeActiveModal()" class="px-4 py-2 rounded-xl text-xs text-neutral-400 hover:text-white hover:bg-[#14141c]">
+            Cancel
+          </button>
+          <button type="submit" id="submit-create-key" class="px-5 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs shadow-lg shadow-sky-600/30">
+            Generate Key
+          </button>
+        </div>
+      </form>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  if (window.lucide) lucide.createIcons();
+}
+
+function closeActiveModal() {
+  const modal = document.getElementById('active-custom-modal');
+  if (modal) modal.remove();
+}
+
+async function handleCreateApiKey(e) {
+  e.preventDefault();
+  const name = document.getElementById('new-key-name').value.trim();
+  const permissions = document.getElementById('new-key-permissions').value;
+  const submitBtn = document.getElementById('submit-create-key');
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.innerText = 'Creating...'; }
+
+  try {
+    const data = await apiRequest('/keys', {
+      method: 'POST',
+      body: { name, permissions }
+    });
+
+    closeActiveModal();
+    showNewApiKeyRevealedModal(data.key);
+    await loadS3ClusterData();
+  } catch (err) {
+    showToast(err.message, 'error');
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.innerText = 'Generate Key'; }
+  }
+}
+
+function showNewApiKeyRevealedModal(key) {
+  const modal = document.createElement('div');
+  modal.id = 'active-custom-modal';
+  modal.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm modal-backdrop-enter';
+  modal.innerHTML = `
+    <div class="pitch-card w-full max-w-lg p-6 rounded-2xl border border-emerald-500/30 shadow-2xl modal-box-enter">
+      <div class="flex items-start justify-between mb-4">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30">
+            <i data-lucide="check-circle-2" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-white">API Key Generated</h3>
+            <p class="text-xs text-neutral-400">${escapeHtml(key.name)}</p>
+          </div>
+        </div>
+        <button onclick="closeActiveModal()" class="text-neutral-400 hover:text-white p-1 rounded-lg">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <div class="space-y-3 mb-5">
+        <div class="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-200 flex items-start gap-2">
+          <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-400 shrink-0 mt-0.5"></i>
+          <span><strong>Save your Secret Key now.</strong> For security, your secret key is only shown once and cannot be recovered later.</span>
+        </div>
+
+        <div>
+          <label class="block text-[11px] font-semibold uppercase text-neutral-400 mb-1">Access Key ID</label>
+          <div class="p-2.5 rounded-xl bg-[#040406] border border-[#1c1c26] flex items-center justify-between gap-2">
+            <span class="font-mono text-xs text-cyan-300 select-all">${escapeHtml(key.key_id)}</span>
+            <button onclick="copyToClipboard('${escapeHtml(key.key_id)}', this, 'Copied Key ID!')" class="px-2 py-1 bg-[#121218] hover:bg-[#1a1a24] text-xs text-neutral-300 rounded border border-[#22222e] flex items-center gap-1">
+              <i data-lucide="copy" class="w-3 h-3"></i> Copy
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-[11px] font-semibold uppercase text-neutral-400 mb-1">Secret Access Key (Token)</label>
+          <div class="p-2.5 rounded-xl bg-[#040406] border border-[#1c1c26] flex items-center justify-between gap-2">
+            <span class="font-mono text-xs text-emerald-300 select-all">${escapeHtml(key.secret_key)}</span>
+            <button onclick="copyToClipboard('${escapeHtml(key.secret_key)}', this, 'Copied Secret Key!')" class="px-2 py-1 bg-[#121218] hover:bg-[#1a1a24] text-xs text-emerald-300 rounded border border-[#22222e] flex items-center gap-1">
+              <i data-lucide="copy" class="w-3 h-3"></i> Copy
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex justify-end">
+        <button onclick="closeActiveModal()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs py-2.5 rounded-xl shadow-lg shadow-emerald-600/20">
+          I Have Saved My Secret Key
+        </button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  if (window.lucide) lucide.createIcons();
+}
+
+async function revokeApiKey(keyId, keyName) {
+  if (!confirm(`Are you sure you want to revoke API key "${keyName}"? Applications using this key will immediately lose access.`)) {
+    return;
+  }
+
+  try {
+    await apiRequest(`/keys/${keyId}`, { method: 'DELETE' });
+    showToast('API key revoked successfully', 'success');
+    await loadS3ClusterData();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+function copyToClipboard(text, btnElement, successMsg = 'Copied to clipboard!') {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => {
+      showToast(successMsg, 'success');
+      if (btnElement) {
+        const originalText = btnElement.innerHTML;
+        btnElement.classList.add('text-emerald-400');
+        setTimeout(() => {
+          btnElement.classList.remove('text-emerald-400');
+        }, 1500);
+      }
+    }).catch(() => fallbackCopy(text, successMsg));
+  } else {
+    fallbackCopy(text, successMsg);
+  }
+}
+
+function fallbackCopy(text, successMsg) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    document.execCommand('copy');
+    showToast(successMsg, 'success');
+  } catch (e) {
+    showToast('Failed to copy', 'error');
+  }
+  ta.remove();
+}
+
+function switchPlaygroundMode(mode) {
+  currentPlaygroundMode = mode;
+  const btnBlob = document.getElementById('btn-pg-blob');
+  const btnS3 = document.getElementById('btn-pg-s3');
+  const pathLabel = document.getElementById('pg-path-label');
+  const fnInput = document.getElementById('pg-filename');
+
+  if (mode === 'blob') {
+    btnBlob.className = 'px-3 py-1.5 text-xs font-semibold rounded-lg bg-cyan-600 text-white transition-all';
+    btnS3.className = 'px-3 py-1.5 text-xs font-semibold rounded-lg text-neutral-400 hover:text-white transition-all';
+    pathLabel.innerText = 'Destination Path (Vercel Blob /pathname)';
+    if (fnInput.value.includes('bucket')) fnInput.value = 'test-uploads/hello-zen.txt';
+  } else {
+    btnS3.className = 'px-3 py-1.5 text-xs font-semibold rounded-lg bg-cyan-600 text-white transition-all';
+    btnBlob.className = 'px-3 py-1.5 text-xs font-semibold rounded-lg text-neutral-400 hover:text-white transition-all';
+    pathLabel.innerText = 'S3 Bucket & Object Key (bucket/key)';
+    if (!fnInput.value.includes('/')) fnInput.value = 'default/test-uploads/hello-zen.txt';
+  }
+}
+
+function handlePlaygroundFileSelect(e) {
+  const file = e.target.files[0];
+  playgroundSelectedFile = file || null;
+  const preview = document.getElementById('pg-file-name-preview');
+  const fnInput = document.getElementById('pg-filename');
+  if (file) {
+    preview.innerText = `${file.name} (${formatBytes(file.size)})`;
+    if (fnInput) {
+      const parts = fnInput.value.split('/');
+      parts[parts.length - 1] = file.name;
+      fnInput.value = parts.join('/');
+    }
+  } else {
+    preview.innerText = 'No file chosen (using text payload)';
+  }
+}
+
+async function executePlaygroundUpload() {
+  const submitBtn = document.getElementById('btn-pg-submit');
+  const statusEl = document.getElementById('pg-res-status');
+  const jsonEl = document.getElementById('pg-res-json');
+  const previewAction = document.getElementById('pg-preview-action');
+  const previewLink = document.getElementById('pg-preview-link');
+
+  const filename = document.getElementById('pg-filename').value.trim();
+  const textPayload = document.getElementById('pg-payload').value;
+
+  if (!filename) {
+    showToast('Please specify a filename or path', 'error');
+    return;
+  }
+
+  submitBtn.disabled = true;
+  submitBtn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Uploading...';
+  if (window.lucide) lucide.createIcons();
+
+  statusEl.innerText = 'Sending...';
+  statusEl.className = 'text-xs font-mono font-bold text-amber-400';
+
+  const startTime = performance.now();
+
+  try {
+    let url = '';
+    let bodyData = null;
+    let headers = {
+      'Authorization': `Bearer ${AppState.token}`
+    };
+
+    if (playgroundSelectedFile) {
+      bodyData = playgroundSelectedFile;
+      headers['Content-Type'] = playgroundSelectedFile.type || 'application/octet-stream';
+    } else {
+      bodyData = textPayload;
+      headers['Content-Type'] = 'text/plain; charset=utf-8';
+    }
+
+    if (currentPlaygroundMode === 'blob') {
+      url = `/api/v1/blob/${encodeURIComponent(filename)}`;
+    } else {
+      let parts = filename.split('/');
+      let bucket = 'default';
+      let key = filename;
+      if (parts.length > 1) {
+        bucket = parts[0];
+        key = parts.slice(1).join('/');
+      }
+      url = `/api/s3/${encodeURIComponent(bucket)}/${encodeURIComponent(key)}`;
+    }
+
+    const res = await fetch(url, {
+      method: 'PUT',
+      headers,
+      body: bodyData
+    });
+
+    const elapsed = Math.round(performance.now() - startTime);
+    const data = await res.json().catch(() => ({ status: res.statusText }));
+
+    statusEl.innerText = `${res.status} ${res.statusText} (${elapsed}ms)`;
+    statusEl.className = res.ok ? 'text-xs font-mono font-bold text-emerald-400' : 'text-xs font-mono font-bold text-red-400';
+
+    jsonEl.innerText = JSON.stringify(data, null, 2);
+
+    if (res.ok) {
+      showToast('API Upload Successful!', 'success');
+      const directUrl = data.url || data.downloadUrl || url;
+      if (previewAction && previewLink) {
+        previewLink.href = directUrl;
+        previewAction.classList.remove('hidden');
+      }
+      loadS3ClusterData().catch(() => {});
+      updateQuotaWidget().catch(() => {});
+    } else {
+      showToast(`Upload failed: ${data.error || res.statusText}`, 'error');
+    }
+  } catch (err) {
+    statusEl.innerText = 'Request Failed';
+    statusEl.className = 'text-xs font-mono font-bold text-red-400';
+    jsonEl.innerText = `Error: ${err.message}`;
+    showToast(err.message, 'error');
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = '<i data-lucide="send" class="w-4 h-4"></i> Execute API Upload Request';
+    if (window.lucide) lucide.createIcons();
+  }
+}
+
+function switchCodeSnippetTab(tab) {
+  currentCodeSnippetTab = tab;
+  const tabs = ['curl', 'blob-js', 's3-python', 's3-node', 'nextjs'];
+  tabs.forEach(t => {
+    const el = document.getElementById(`tab-code-${t}`);
+    if (el) {
+      if (t === tab) {
+        el.className = 'px-3 py-1 text-xs font-semibold rounded-lg bg-sky-600 text-white transition-all';
+      } else {
+        el.className = 'px-3 py-1 text-xs font-semibold rounded-lg text-neutral-400 hover:text-white transition-all';
+      }
+    }
+  });
+
+  const pre = document.getElementById('code-snippet-pre');
+  if (!pre) return;
+  const origin = window.location.origin;
+
+  if (tab === 'curl') {
+    pre.innerText = `# 1. Upload via Vercel Blob API (Binary PUT)
+curl -X PUT "${origin}/api/v1/blob/images/avatar.png" \\
+  -H "Authorization: Bearer YOUR_API_KEY" \\
+  -H "Content-Type: image/png" \\
+  --data-binary @"./avatar.png"
+
+# 2. Upload via AWS S3 PutObject API
+curl -X PUT "${origin}/api/s3/my-bucket/documents/report.pdf" \\
+  -H "Authorization: Bearer YOUR_API_KEY" \\
+  -H "Content-Type: application/pdf" \\
+  --data-binary @"./report.pdf"
+
+# 3. Download Object
+curl -O "${origin}/api/s3/my-bucket/documents/report.pdf" \\
+  -H "Authorization: Bearer YOUR_API_KEY"`;
+  } else if (tab === 'blob-js') {
+    pre.innerText = `// Drop-in Vercel Blob replacement (Client or Server)
+import { put } from '@vercel/blob';
+
+// Option A: Direct Fetch to your Zen Blob Cluster
+async function uploadToBlob(file) {
+  const response = await fetch('${origin}/api/v1/blob/' + file.name, {
+    method: 'PUT',
+    headers: {
+      'Authorization': 'Bearer ' + process.env.ZEN_BLOB_TOKEN,
+      'Content-Type': file.type || 'application/octet-stream'
+    },
+    body: file
+  });
+  
+  const blob = await response.json();
+  console.log('Uploaded Blob URL:', blob.url);
+  return blob;
+}`;
+  } else if (tab === 's3-python') {
+    pre.innerText = `import boto3
+from botocore.config import Config
+
+# Connect to your free self-hosted VPS S3 Cluster
+s3_client = boto3.client(
+    's3',
+    endpoint_url='${origin}/api/s3',
+    aws_access_key_id='YOUR_KEY_ID',
+    aws_secret_access_key='YOUR_SECRET_KEY',
+    config=Config(s3={'addressing_style': 'path'})
+)
+
+# Upload file
+s3_client.upload_file(
+    Filename='local_data.csv',
+    Bucket='analytics',
+    Key='2026/report.csv'
+)
+print("File successfully uploaded to VPS S3 cluster!")`;
+  } else if (tab === 's3-node') {
+    pre.innerText = `import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+
+const s3 = new S3Client({
+  endpoint: "${origin}/api/s3",
+  region: "us-east-1",
+  forcePathStyle: true,
+  credentials: {
+    accessKeyId: process.env.ZEN_S3_KEY_ID,
+    secretAccessKey: process.env.ZEN_S3_SECRET_KEY
+  }
+});
+
+// Upload object
+await s3.send(new PutObjectCommand({
+  Bucket: "uploads",
+  Key: "file.json",
+  Body: JSON.stringify({ status: "success" }),
+  ContentType: "application/json"
+}));`;
+  } else if (tab === 'nextjs') {
+    pre.innerText = `// app/api/upload/route.ts (Next.js App Router)
+import { NextResponse } from 'next/server';
+
+export async function POST(request: Request) {
+  const formData = await request.formData();
+  const file = formData.get('file') as File;
+  
+  if (!file) {
+    return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+  }
+
+  // Forward to your Zen S3 / Blob Cluster
+  const uploadRes = await fetch('${origin}/api/v1/blob/' + file.name, {
+    method: 'PUT',
+    headers: {
+      'Authorization': \`Bearer \${process.env.ZEN_STORAGE_TOKEN}\`,
+      'Content-Type': file.type
+    },
+    body: Buffer.from(await file.arrayBuffer())
+  });
+
+  const data = await uploadRes.json();
+  return NextResponse.json(data);
+}`;
+  }
+}
+
+function copyCurrentCodeSnippet(btn) {
+  const pre = document.getElementById('code-snippet-pre');
+  if (pre) {
+    copyToClipboard(pre.innerText, btn, 'Code snippet copied!');
+  }
+}
+
+// ==========================================
 // 5. SHARE LINKS TAB COMPONENT
 // ==========================================
 async function renderShareLinksTab(container) {
@@ -1816,43 +2603,57 @@ function revokeShareLink(token) {
 // ==========================================
 async function renderDashboardTab(container) {
   container.innerHTML = `
-    <div class="space-y-6">
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div class="glass-card p-6 rounded-2xl border border-slate-800">
-          <div class="flex items-center justify-between mb-4">
-            <span class="text-xs font-semibold text-slate-400 uppercase">Storage Quota</span>
-            <i data-lucide="pie-chart" class="w-5 h-5 text-sky-400"></i>
+    <div class="space-y-6 tab-pane-enter">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="pitch-card pitch-card-hover p-5 rounded-2xl border border-[#1b1b22]">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-xs font-semibold text-neutral-400 uppercase tracking-wider">Storage Quota</span>
+            <i data-lucide="pie-chart" class="w-4 h-4 text-sky-400"></i>
           </div>
-          <div class="text-2xl font-bold text-white mb-2" id="dash-storage-text">Loading...</div>
-          <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-            <div id="dash-storage-bar" class="bg-sky-500 h-full rounded-full" style="width: 0%"></div>
+          <div class="text-xl font-bold text-white mb-2" id="dash-storage-text">Loading...</div>
+          <div class="w-full bg-[#16161c] h-2 rounded-full overflow-hidden">
+            <div id="dash-storage-bar" class="bg-gradient-to-r from-sky-500 to-cyan-400 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
           </div>
         </div>
 
-        <div class="glass-card p-6 rounded-2xl border border-slate-800">
-          <div class="flex items-center justify-between mb-4">
-            <span class="text-xs font-semibold text-slate-400 uppercase">Active Shares</span>
-            <i data-lucide="share-2" class="w-5 h-5 text-emerald-400"></i>
+        <div class="pitch-card pitch-card-hover p-5 rounded-2xl border border-[#1b1b22]">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-xs font-semibold text-neutral-400 uppercase tracking-wider">Active Shares</span>
+            <i data-lucide="share-2" class="w-4 h-4 text-emerald-400"></i>
           </div>
-          <div class="text-2xl font-bold text-white" id="dash-share-count">0 / 3 Active</div>
-          <p class="text-xs text-slate-500 mt-2">Max active share link limit</p>
+          <div class="text-xl font-bold text-white" id="dash-share-count">0 / 3 Active</div>
+          <p class="text-xs text-neutral-500 mt-2">Max active share links</p>
         </div>
 
-        <div class="glass-card p-6 rounded-2xl border border-slate-800">
-          <div class="flex items-center justify-between mb-4">
-            <span class="text-xs font-semibold text-slate-400 uppercase">Current Session IP</span>
-            <i data-lucide="shield-check" class="w-5 h-5 text-purple-400"></i>
+        <div onclick="navigateTab('s3cluster')" class="pitch-card pitch-card-hover p-5 rounded-2xl border border-[#1b1b22] cursor-pointer group">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-xs font-semibold text-neutral-400 uppercase tracking-wider">S3 & Blob API</span>
+            <i data-lucide="cloud-lightning" class="w-4 h-4 text-cyan-400 group-hover:scale-110 transition-transform"></i>
           </div>
-          <div class="text-lg font-bold text-white font-mono" id="dash-ip-text">Detecting...</div>
-          <p class="text-xs text-slate-500 mt-2">IPv4 & IPv6 Tracking Active</p>
+          <div class="text-xl font-bold text-white flex items-center gap-1.5">
+            Free Cluster <span class="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-normal">Active</span>
+          </div>
+          <p class="text-xs text-neutral-500 mt-2 flex items-center justify-between">
+            <span>S3 & Blob SDK</span>
+            <span class="text-cyan-400 font-semibold flex items-center gap-1">Open <i data-lucide="arrow-right" class="w-3 h-3"></i></span>
+          </p>
+        </div>
+
+        <div class="pitch-card pitch-card-hover p-5 rounded-2xl border border-[#1b1b22]">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-xs font-semibold text-neutral-400 uppercase tracking-wider">Session IP</span>
+            <i data-lucide="shield-check" class="w-4 h-4 text-purple-400"></i>
+          </div>
+          <div class="text-sm font-bold text-white font-mono truncate" id="dash-ip-text">Detecting...</div>
+          <p class="text-xs text-neutral-500 mt-2">IPv4 & IPv6 Tracking Active</p>
         </div>
       </div>
 
-      <div class="glass-card p-6 rounded-2xl border border-slate-800">
+      <div class="pitch-card p-6 rounded-2xl border border-[#1b1b22]">
         <h3 class="text-sm font-bold text-white mb-4 flex items-center gap-2">
           <i data-lucide="clock" class="w-4 h-4 text-sky-400"></i> Recent Login Activity
         </h3>
-        <div id="dash-recent-logins" class="text-xs text-slate-400">Loading recent logins...</div>
+        <div id="dash-recent-logins" class="text-xs text-neutral-400">Loading recent logins...</div>
       </div>
       <div id="dash-contact-details" class="grid md:grid-cols-2 gap-4"></div>
     </div>

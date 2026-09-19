@@ -285,12 +285,33 @@ function initDatabase() {
           );
         `);
 
+        // API Keys table for S3 Cluster & Blob API access
+        await runQuery(`
+          CREATE TABLE IF NOT EXISTS api_keys (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            key_id TEXT UNIQUE NOT NULL,
+            secret_key TEXT NOT NULL,
+            permissions TEXT NOT NULL DEFAULT 'read,write,delete',
+            rate_limit INTEGER NOT NULL DEFAULT 3600,
+            total_requests INTEGER NOT NULL DEFAULT 0,
+            last_used_at DATETIME,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+          );
+        `);
+
         // Indexes used by registration protection and admin pagination.
         await runQuery(`CREATE INDEX IF NOT EXISTS idx_registration_ip_locks_ip ON registration_ip_locks(ip_address);`);
         await runQuery(`CREATE INDEX IF NOT EXISTS idx_ip_history_timestamp ON ip_history(timestamp DESC);`);
         await runQuery(`CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON audit_logs(timestamp DESC);`);
         await runQuery(`CREATE INDEX IF NOT EXISTS idx_download_monitor_started ON download_monitor_logs(started_at DESC);`);
         await runQuery(`CREATE INDEX IF NOT EXISTS idx_download_monitor_user ON download_monitor_logs(user_id, started_at DESC);`);
+        await runQuery(`CREATE INDEX IF NOT EXISTS idx_api_keys_key_id ON api_keys(key_id);`);
+        await runQuery(`CREATE INDEX IF NOT EXISTS idx_api_keys_secret ON api_keys(secret_key);`);
+        await runQuery(`CREATE INDEX IF NOT EXISTS idx_api_keys_user ON api_keys(user_id);`);
 
         // Seed default app settings if missing
         const defaultSettings = [

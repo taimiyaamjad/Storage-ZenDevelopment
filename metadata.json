@@ -1,0 +1,6 @@
+{
+  "name": "VPS SFTP Cloud & S3 Manager",
+  "description": "Production VPS SFTP file manager with AWS S3 & Vercel Blob compatible storage API cluster, interactive installation script, and pitch-black dark interface.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
