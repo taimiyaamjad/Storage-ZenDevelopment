@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#020617">
+  <meta name="mobile-web-app-capable" content="yes">
+  <title>VPS SFTP Cloud Manager</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Xterm.js Terminal CSS & JS for Admin VPS Console -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
+  <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0f9ff',
+              100: '#e0f2fe',
+              500: '#0284c7',
+              600: '#0284c7',
+              700: '#0369a1',
+              800: '#075985',
+              900: '#0c4a6e',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* Custom Glassmorphism & Micro-animations */
+    .glass-card {
+      background: rgba(30, 41, 59, 0.7);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .glass-card-light {
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(0, 0, 0, 0.06);
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #475569;
+      border-radius: 4px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    /* Responsive/mobile layout fixes */
+    html, body { max-width: 100%; overflow-x: hidden; }
+    button, input, select { -webkit-tap-highlight-color: transparent; }
+    #file-context-menu { max-width: calc(100vw - 16px); }
+    .admin-table-scroll, .file-table-scroll { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    /* Side preview drawer */
+    #file-preview-drawer {
+      width: min(520px, 92vw);
+      max-height: 100vh;
+    }
+    .preview-media {
+      max-width: 100%;
+      max-height: calc(100vh - 150px);
+      object-fit: contain;
+      border-radius: 0.75rem;
+    }
+    @media (max-width: 767px) {
+      #file-preview-drawer {
+        width: 100vw;
+      }
+    }
+
+    @media (max-width: 767px) {
+      #sidebar { padding: 0.75rem; border-right: 0; border-bottom: 1px solid rgba(51,65,85,.8); }
+      #sidebar .brand-block { margin-bottom: .5rem; padding: .35rem .25rem; }
+      #sidebar .desktop-quota { display: none; }
+      #sidebar nav { display: flex; gap: .4rem; overflow-x: auto; padding-bottom: .2rem; scrollbar-width: none; }
+      #sidebar nav::-webkit-scrollbar { display: none; }
+      #sidebar nav > button, #sidebar nav > div { flex: 0 0 auto; }
+      #sidebar nav > button { width: auto; white-space: nowrap; }
+      #sidebar nav > div { display: flex; align-items: center; gap: .4rem; padding: 0; margin: 0; border: 0; }
+      #sidebar nav > div > span { display:none; }
+      #sidebar nav > div > button { width: auto; white-space: nowrap; }
+      #mobile-account { display: flex; padding-top: .6rem; margin-top: .5rem; border-top: 1px solid rgba(51,65,85,.7); }
+      #main-header { padding: .75rem 1rem; }
+      #tab-content-area { padding: .75rem; }
+      .mobile-stack { flex-direction: column !important; align-items: stretch !important; }
+      .mobile-full { width: 100% !important; }
+    }
+
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen font-sans antialiased custom-scrollbar">
+
+  <div id="app"></div>
+
+  <!-- SPA Core Application Logic Script -->
+  <script src="/app.js"></script>
+</body>
+</html>
