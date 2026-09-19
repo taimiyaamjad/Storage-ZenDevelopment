@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const http = require('http');
 const path = require('path');
+const fs = require('fs');
 const cors = require('cors');
 const { WebSocketServer } = require('ws');
 
@@ -31,14 +32,65 @@ const trustProxy = process.env.TRUST_PROXY || 'loopback';
 app.set('trust proxy', trustProxy);
 
 // Security & Parsing Middleware
-app.use(cors());
-app.use(express.json({ limit: '500mb' }));
-app.use(express.urlencoded({ extended: true, limit: '500mb' }));
+app.use(cors({
+  origin: true,
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'x-blob-token', 'x-amz-date', 'x-amz-content-sha256', 'x-amz-security-token', 'range', 'origin', 'accept', 'x-add-random-suffix']
+}));
+
+// Selective JSON & URL-encoded parsing so that binary and raw uploads on S3 and Blob endpoints keep their streams intact
+app.use((req, res, next) => {
+  const isRawStreamUpload =
+    (req.path.startsWith('/api/v1/blob') && req.method === 'PUT') ||
+    (req.path.startsWith('/api/s3') && req.method === 'PUT') ||
+    (req.path.startsWith('/api/files/upload') && req.method === 'POST') ||
+    (req.path.startsWith('/api/v1/blob/upload') && req.method === 'POST');
+
+  if (isRawStreamUpload) {
+    return next();
+  }
+  express.json({ limit: '500mb' })(req, res, next);
+});
+
+app.use((req, res, next) => {
+  const isRawStreamUpload =
+    (req.path.startsWith('/api/v1/blob') && req.method === 'PUT') ||
+    (req.path.startsWith('/api/s3') && req.method === 'PUT') ||
+    (req.path.startsWith('/api/files/upload') && req.method === 'POST') ||
+    (req.path.startsWith('/api/v1/blob/upload') && req.method === 'POST');
+
+  if (isRawStreamUpload) {
+    return next();
+  }
+  express.urlencoded({ extended: true, limit: '500mb' })(req, res, next);
+});
 
 // Easy VPS Installer Script Route (direct curl access: curl -fsSL http://vps/install.sh | bash)
 app.get(['/install.sh', '/api/public/install.sh'], (req, res) => {
   res.setHeader('Content-Type', 'text/x-shellscript');
-  res.sendFile(path.join(__dirname, 'install.sh'));
+  const scriptPath = path.join(__dirname, 'install.sh');
+  try {
+    let script = fs.readFileSync(scriptPath, 'utf8');
+    const proto = req.protocol === 'https' || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
+    const origin = `${proto}://${req.get('host')}`;
+    script = script.replace(/__APP_SOURCE_URL__/g, origin);
+    res.send(script);
+  } catch (err) {
+    res.status(500).send('Error loading install script: ' + err.message);
+  }
+});
+
+// Full Application Bundle archive endpoint for headless VPS curl installations
+app.get('/api/public/bundle.tar.gz', (req, res) => {
+  const { exec } = require('child_process');
+  res.setHeader('Content-Type', 'application/gzip');
+  res.setHeader('Content-Disposition', 'attachment; filename="app-bundle.tar.gz"');
+  const tar = exec('tar --exclude="node_modules" --exclude=".git" --exclude="*.sqlite*" --exclude="storage" --exclude="*.log" -czf - .');
+  tar.stdout.pipe(res);
+  tar.on('error', (err) => {
+    if (!res.headersSent) res.status(500).send('Failed to package application bundle: ' + err.message);
+  });
 });
 
 // Static files (Frontend build output)

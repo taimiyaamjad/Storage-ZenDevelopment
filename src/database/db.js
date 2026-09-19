@@ -697,9 +697,9 @@ function initDatabase() {
            );
         }
 
-        // Seed default Admin Account if no users exist. Wait for the INSERT to finish
+        // Seed default Admin Account if no 'admin' user exists. Wait for the INSERT to finish
         // before resolving database initialization so startup cannot race app_settings reads.
-        db.get(`SELECT COUNT(*) as count FROM users;`, async (err, row) => {
+        db.get(`SELECT id FROM users WHERE username = 'admin';`, async (err, row) => {
           if (err) return reject(err);
 
           const finish = (seedErr = null) => {
@@ -711,14 +711,14 @@ function initDatabase() {
             });
           };
 
-          if (row && row.count === 0) {
+          if (!row) {
             try {
               const hash = await bcrypt.hash('Admin@123456', 10);
               db.run(
                 `INSERT INTO users (name, username, email, password_hash, role, storage_quota_bytes, email_verified) VALUES (?, ?, ?, ?, ?, ?, 1);`,
                 ['System Admin', 'admin', 'admin@vpsmanager.local', hash, 'admin', 107374182400],
                 insertErr => {
-                  if (!insertErr) console.log('Default Admin user created: username: "admin", password: "Admin@123456"');
+                  if (!insertErr) console.log('Default Admin user ensured: username: "admin", password: "Admin@123456"');
                   finish(insertErr);
                 }
               );

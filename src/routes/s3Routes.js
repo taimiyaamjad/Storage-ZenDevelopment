@@ -182,11 +182,12 @@ router.get('/:bucket', requireApiKeyOrSession, requirePermission('read'), async 
 });
 
 /**
- * 4. PUT /api/s3/:bucket/:key(*) - PutObject (Upload object)
+ * 4. PUT /api/s3/:bucket/*key - PutObject (Upload object)
  */
-router.put('/:bucket/:key(*)', requireApiKeyOrSession, requirePermission('write'), async (req, res) => {
+router.put('/:bucket/*key', requireApiKeyOrSession, requirePermission('write'), async (req, res) => {
   try {
-    const { bucket, key } = req.params;
+    const bucket = req.params.bucket;
+    const key = Array.isArray(req.params.key) ? req.params.key.join('/') : (req.params.key || '');
     if (!key) return res.status(400).json({ error: 'Object key is required.' });
 
     const { absolutePath } = resolveS3Path(req.user.id, bucket, key);
@@ -197,16 +198,8 @@ router.put('/:bucket/:key(*)', requireApiKeyOrSession, requirePermission('write'
 
     const hash = crypto.createHash('md5');
     const writeStream = fs.createWriteStream(absolutePath);
-    let bytesWritten = 0;
 
-    req.on('data', chunk => {
-      bytesWritten += chunk.length;
-      hash.update(chunk);
-    });
-
-    req.pipe(writeStream);
-
-    writeStream.on('finish', async () => {
+    const onFinish = async () => {
       try {
         await checkQuota(req.user.id, 0);
         await syncUsedStorage(req.user.id);
@@ -221,22 +214,39 @@ router.put('/:bucket/:key(*)', requireApiKeyOrSession, requirePermission('write'
         if (fs.existsSync(absolutePath)) fs.unlinkSync(absolutePath);
         return res.status(err.statusCode || 500).json({ error: err.message });
       }
-    });
+    };
 
+    writeStream.on('finish', onFinish);
     writeStream.on('error', err => {
       return res.status(500).json({ error: 'Failed to write S3 object: ' + err.message });
     });
+
+    if (req.body && (Buffer.isBuffer(req.body) || typeof req.body === 'string' || (typeof req.body === 'object' && Object.keys(req.body).length > 0))) {
+      const data = Buffer.isBuffer(req.body)
+        ? req.body
+        : typeof req.body === 'string'
+        ? Buffer.from(req.body)
+        : Buffer.from(JSON.stringify(req.body));
+      hash.update(data);
+      writeStream.end(data);
+    } else {
+      req.on('data', chunk => {
+        hash.update(chunk);
+      });
+      req.pipe(writeStream);
+    }
   } catch (err) {
     return res.status(err.statusCode || 500).json({ error: err.message });
   }
 });
 
 /**
- * 5. GET /api/s3/:bucket/:key(*) - GetObject (Download object)
+ * 5. GET /api/s3/:bucket/*key - GetObject (Download object)
  */
-router.get('/:bucket/:key(*)', async (req, res) => {
+router.get('/:bucket/*key', async (req, res) => {
   try {
-    const { bucket, key } = req.params;
+    const bucket = req.params.bucket;
+    const key = Array.isArray(req.params.key) ? req.params.key.join('/') : (req.params.key || '');
     // Check auth or locate file
     let userId = null;
     const authHeader = req.headers['authorization'] || '';
@@ -319,11 +329,12 @@ router.get('/:bucket/:key(*)', async (req, res) => {
 });
 
 /**
- * 6. HEAD /api/s3/:bucket/:key(*) - HeadObject
+ * 6. HEAD /api/s3/:bucket/*key - HeadObject
  */
-router.head('/:bucket/:key(*)', async (req, res) => {
+router.head('/:bucket/*key', async (req, res) => {
   try {
-    const { bucket, key } = req.params;
+    const bucket = req.params.bucket;
+    const key = Array.isArray(req.params.key) ? req.params.key.join('/') : (req.params.key || '');
     const storageRoot = process.env.STORAGE_ROOT || '/tmp/vps_sftp_storage';
     let targetFile = null;
 
@@ -357,11 +368,12 @@ router.head('/:bucket/:key(*)', async (req, res) => {
 });
 
 /**
- * 7. DELETE /api/s3/:bucket/:key(*) - DeleteObject
+ * 7. DELETE /api/s3/:bucket/*key - DeleteObject
  */
-router.delete('/:bucket/:key(*)', requireApiKeyOrSession, requirePermission('delete'), async (req, res) => {
+router.delete('/:bucket/*key', requireApiKeyOrSession, requirePermission('delete'), async (req, res) => {
   try {
-    const { bucket, key } = req.params;
+    const bucket = req.params.bucket;
+    const key = Array.isArray(req.params.key) ? req.params.key.join('/') : (req.params.key || '');
     const { absolutePath } = resolveS3Path(req.user.id, bucket, key);
 
     if (fs.existsSync(absolutePath)) {

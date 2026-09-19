@@ -73,73 +73,340 @@
     }
   </script>
   <style>
-    /* Pitch Dark Black & Smooth Animations Styling */
-    :root {
+    /* =========================================================
+       1. CRISP LIGHT THEME SPECIFICATION
+       High-contrast, bold, crystal-clear typography (WCAG AAA)
+       ========================================================= */
+    :root, html:not(.dark), html.light {
+      color-scheme: light;
+      --bg-main: #f8fafc;
+      --bg-sidebar: #ffffff;
+      --border-sidebar: #e2e8f0;
+      --bg-header: rgba(255, 255, 255, 0.96);
+      --border-header: #e2e8f0;
+      --card-bg: #ffffff;
+      --card-border: #e2e8f0;
+      --card-hover-border: #0284c7;
+      --text-heading: #090d16;
+      --text-body: #1e293b;
+      --text-muted: #475569;
+      --text-soft: #64748b;
+      --input-bg: #ffffff;
+      --input-border: #cbd5e1;
+      --input-text: #090d16;
+      --nav-inactive-text: #334155;
+      --nav-hover-bg: #f1f5f9;
+      --nav-hover-text: #090d16;
+      --code-bg: #f1f5f9;
+      --code-text: #0369a1;
+      --table-header-bg: #f1f5f9;
+      --table-row-hover: #f8fafc;
+      --drawer-bg: #ffffff;
+      --drawer-border: #e2e8f0;
+      --modal-bg: #ffffff;
+      --scrollbar-thumb: #94a3b8;
+      --scrollbar-track: #f1f5f9;
+    }
+
+    /* =========================================================
+       2. TRUE PITCH DARK BLACK THEME SPECIFICATION
+       Pure OLED Pitch Black (#000000), Obsidian cards (#060609),
+       crisp borders (#14141a), high-contrast white text (#ffffff)
+       ========================================================= */
+    html.dark {
       color-scheme: dark;
+      --bg-main: #000000;
+      --bg-sidebar: #000000;
+      --border-sidebar: #141418;
+      --bg-header: rgba(0, 0, 0, 0.96);
+      --border-header: #141418;
+      --card-bg: #060609;
+      --card-border: #15151c;
+      --card-hover-border: #0ea5e9;
+      --text-heading: #ffffff;
+      --text-body: #f3f4f6;
+      --text-muted: #9ca3af;
+      --text-soft: #6b7280;
+      --input-bg: #020203;
+      --input-border: #1a1a24;
+      --input-text: #ffffff;
+      --nav-inactive-text: #9ca3af;
+      --nav-hover-bg: #0e0e13;
+      --nav-hover-text: #ffffff;
+      --code-bg: #000000;
+      --code-text: #38bdf8;
+      --table-header-bg: #020204;
+      --table-row-hover: #0a0a0f;
+      --drawer-bg: #040406;
+      --drawer-border: #141418;
+      --modal-bg: #060609;
+      --scrollbar-thumb: #22222c;
+      --scrollbar-track: #000000;
     }
 
     body {
-      background-color: #020203;
-      color: #f3f4f6;
+      background-color: var(--bg-main);
+      color: var(--text-body);
+      transition: background-color 0.2s ease, color 0.2s ease;
     }
 
-    /* Pitch Black Glass Cards */
-    .glass-card {
-      background: rgba(12, 12, 15, 0.88);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      border: 1px solid rgba(255, 255, 255, 0.07);
-      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.7);
+    .theme-main-bg {
+      background-color: var(--bg-main) !important;
+    }
+    .theme-sidebar {
+      background-color: var(--bg-sidebar) !important;
+      border-color: var(--border-sidebar) !important;
+    }
+    .theme-header {
+      background-color: var(--bg-header) !important;
+      border-color: var(--border-header) !important;
     }
 
-    .pitch-card {
-      background: #08080a;
-      border: 1px solid #1a1a20;
-      box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.8);
+    /* Elevated Surface Cards */
+    .glass-card, .pitch-card {
+      background-color: var(--card-bg) !important;
+      border: 1px solid var(--card-border) !important;
+      transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    html:not(.dark) .glass-card, html:not(.dark) .pitch-card {
+      box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
+    }
+    html.dark .glass-card, html.dark .pitch-card {
+      box-shadow: 0 4px 24px -2px rgba(0, 0, 0, 0.9);
     }
 
     .pitch-card-hover {
       transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
     }
     .pitch-card-hover:hover {
-      border-color: rgba(56, 189, 248, 0.4);
+      border-color: var(--card-hover-border) !important;
       transform: translateY(-2px);
-      box-shadow: 0 10px 30px -4px rgba(14, 165, 233, 0.15);
+    }
+    html:not(.dark) .pitch-card-hover:hover {
+      box-shadow: 0 10px 25px -4px rgba(2, 132, 199, 0.12);
+    }
+    html.dark .pitch-card-hover:hover {
+      box-shadow: 0 10px 25px -4px rgba(14, 165, 233, 0.25);
     }
 
     .pitch-input {
-      background-color: #060608 !important;
-      border-color: #1e1e24 !important;
-      color: #f9fafb !important;
+      background-color: var(--input-bg) !important;
+      border-color: var(--input-border) !important;
+      color: var(--input-text) !important;
       transition: border-color 0.15s ease, box-shadow 0.15s ease;
     }
     .pitch-input:focus {
       border-color: #0ea5e9 !important;
-      box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.2) !important;
+      box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.2) !important;
     }
 
-    /* Ultra-sleek Pitch-Dark Scrollbars */
+    /* =========================================================
+       3. LIGHT MODE HIGH-CONTRAST LEGIBILITY RULES
+       Fixes invisible white-on-white text and washed-out grays
+       ========================================================= */
+    html:not(.dark) body {
+      color: #1e293b !important;
+    }
+
+    /* Convert white/near-white text into sharp dark slate (#090d16),
+       EXCEPT when inside a solid colored action button / badge */
+    html:not(.dark) .text-white:not(
+      button.bg-sky-600, button.bg-sky-500, button.bg-emerald-600, button.bg-emerald-500,
+      button.bg-red-600, button.bg-red-500, button.bg-amber-600, button.bg-amber-500,
+      a.bg-sky-600, a.bg-emerald-600, a.bg-red-600, label.bg-sky-600,
+      .bg-sky-600 *, .bg-sky-500 *, .bg-emerald-600 *, .bg-emerald-500 *,
+      .bg-red-600 *, .bg-red-500 *, .bg-amber-600 *, .bg-amber-500 *,
+      .badge-white-text
+    ) {
+      color: #090d16 !important;
+    }
+
+    /* Solid colored buttons MUST retain bright white text in both themes */
+    button.bg-sky-600, button.bg-sky-500,
+    button.bg-emerald-600, button.bg-emerald-500,
+    button.bg-red-600, button.bg-red-500,
+    button.bg-amber-600, button.bg-amber-500,
+    a.bg-sky-600, a.bg-emerald-600, label.bg-sky-600 {
+      color: #ffffff !important;
+    }
+    button.bg-sky-600 *, button.bg-sky-500 *,
+    button.bg-emerald-600 *, button.bg-emerald-500 *,
+    button.bg-red-600 *, button.bg-red-500 *,
+    button.bg-amber-600 *, button.bg-amber-500 *,
+    a.bg-sky-600 *, a.bg-emerald-600 *, label.bg-sky-600 * {
+      color: #ffffff !important;
+    }
+
+    /* Boost low-contrast text shades in light mode for crystal-clear readability */
+    html:not(.dark) .text-slate-100,
+    html:not(.dark) .text-slate-200,
+    html:not(.dark) .text-neutral-100,
+    html:not(.dark) .text-neutral-200 {
+      color: #090d16 !important;
+    }
+
+    html:not(.dark) .text-slate-300,
+    html:not(.dark) .text-neutral-300 {
+      color: #1e293b !important;
+    }
+
+    html:not(.dark) .text-slate-400,
+    html:not(.dark) .text-neutral-400 {
+      color: #334155 !important; /* Slate-700: 9:1 contrast ratio */
+    }
+
+    html:not(.dark) .text-slate-500,
+    html:not(.dark) .text-neutral-500 {
+      color: #475569 !important; /* Slate-600: 7:1 contrast ratio */
+    }
+
+    /* Vibrant accents with strong contrast in light mode */
+    html:not(.dark) .text-cyan-400 { color: #0284c7 !important; }
+    html:not(.dark) .text-cyan-300 { color: #0369a1 !important; }
+    html:not(.dark) .text-sky-400  { color: #0284c7 !important; }
+    html:not(.dark) .text-sky-300  { color: #0369a1 !important; }
+    html:not(.dark) .text-emerald-400 { color: #059669 !important; }
+    html:not(.dark) .text-emerald-300 { color: #047857 !important; }
+    html:not(.dark) .text-amber-400 { color: #d97706 !important; }
+    html:not(.dark) .text-amber-300 { color: #b45309 !important; }
+    html:not(.dark) .text-red-400   { color: #dc2626 !important; }
+    html:not(.dark) .text-red-300   { color: #b91c1c !important; }
+    html:not(.dark) .text-purple-400 { color: #7e22ce !important; }
+
+    /* Adapt dark background boxes in light mode */
+    html:not(.dark) .bg-slate-900,
+    html:not(.dark) .bg-slate-950,
+    html:not(.dark) .bg-slate-950\/40,
+    html:not(.dark) .bg-slate-950\/50,
+    html:not(.dark) .bg-slate-950\/60,
+    html:not(.dark) .bg-slate-950\/80,
+    html:not(.dark) .bg-\[\#040406\],
+    html:not(.dark) .bg-\[\#050507\]\/90,
+    html:not(.dark) .bg-\[\#07070a\],
+    html:not(.dark) .bg-\[\#08080a\],
+    html:not(.dark) .bg-\[\#0a0a0d\],
+    html:not(.dark) .bg-\[\#121217\],
+    html:not(.dark) .bg-\[\#121218\],
+    html:not(.dark) .bg-\[\#14141a\],
+    html:not(.dark) .bg-\[\#15151b\],
+    html:not(.dark) .bg-\[\#16161c\],
+    html:not(.dark) .bg-\[\#181822\],
+    html:not(.dark) .bg-\[\#1a1a22\] {
+      background-color: #f1f5f9 !important;
+      border-color: #e2e8f0 !important;
+      color: #0f172a !important;
+    }
+
+    /* Light mode secondary buttons & hover states */
+    html:not(.dark) .bg-slate-800:not(button.bg-sky-600, button.bg-emerald-600, button.bg-amber-600, button.bg-red-600),
+    html:not(.dark) .hover\:bg-slate-800:hover {
+      background-color: #e2e8f0 !important;
+      color: #0f172a !important;
+    }
+    html:not(.dark) .hover\:bg-\[\#121217\]:hover,
+    html:not(.dark) .hover\:bg-\[\#1a1a22\]:hover {
+      background-color: #f1f5f9 !important;
+      color: #0f172a !important;
+    }
+
+    /* Light mode borders */
+    html:not(.dark) .border-slate-800,
+    html:not(.dark) .border-slate-800\/60,
+    html:not(.dark) .border-slate-700,
+    html:not(.dark) .border-\[\#1c1c24\],
+    html:not(.dark) .border-\[\#181820\],
+    html:not(.dark) .border-\[\#181822\],
+    html:not(.dark) .border-\[\#1b1b22\],
+    html:not(.dark) .border-\[\#22222a\],
+    html:not(.dark) .border-\[\#22222e\],
+    html:not(.dark) .divide-slate-800\/60 > :not([hidden]) ~ :not([hidden]),
+    html:not(.dark) .divide-slate-800 > :not([hidden]) ~ :not([hidden]) {
+      border-color: #e2e8f0 !important;
+    }
+
+    /* Light mode inputs */
+    html:not(.dark) input[type="text"],
+    html:not(.dark) input[type="password"],
+    html:not(.dark) input[type="email"],
+    html:not(.dark) input[type="url"],
+    html:not(.dark) select,
+    html:not(.dark) textarea {
+      background-color: #ffffff !important;
+      border-color: #cbd5e1 !important;
+      color: #0f172a !important;
+    }
+    html:not(.dark) input::placeholder,
+    html:not(.dark) textarea::placeholder {
+      color: #94a3b8 !important;
+    }
+
+    /* =========================================================
+       4. PITCH DARK BLACK THEME COMPONENT OVERRIDES
+       True zero-light pitch black canvas and obsidian surfaces
+       ========================================================= */
+    html.dark body {
+      background-color: #000000 !important;
+      color: #f3f4f6 !important;
+    }
+    html.dark .theme-main-bg {
+      background-color: #000000 !important;
+    }
+    html.dark .theme-sidebar {
+      background-color: #000000 !important;
+      border-color: #141418 !important;
+    }
+    html.dark .theme-header {
+      background-color: rgba(0, 0, 0, 0.95) !important;
+      border-color: #141418 !important;
+    }
+    html.dark .glass-card,
+    html.dark .pitch-card {
+      background-color: #060609 !important;
+      border-color: #15151c !important;
+    }
+    html.dark .bg-slate-900,
+    html.dark .bg-slate-950 {
+      background-color: #030304 !important;
+      border-color: #141418 !important;
+    }
+    html.dark .pitch-input,
+    html.dark input[type="text"],
+    html.dark input[type="password"],
+    html.dark input[type="email"],
+    html.dark input[type="url"],
+    html.dark select,
+    html.dark textarea {
+      background-color: #020203 !important;
+      border-color: #1a1a24 !important;
+      color: #ffffff !important;
+    }
+    html.dark input::placeholder,
+    html.dark textarea::placeholder {
+      color: #64748b !important;
+    }
+
+    /* Refined Adaptive Scrollbars */
     .custom-scrollbar::-webkit-scrollbar {
       width: 6px;
       height: 6px;
     }
     .custom-scrollbar::-webkit-scrollbar-thumb {
-      background: #23232c;
+      background: var(--scrollbar-thumb);
       border-radius: 9999px;
     }
     .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-      background: #38bdf8;
+      background: #0ea5e9;
     }
     .custom-scrollbar::-webkit-scrollbar-track {
-      background: #040405;
+      background: var(--scrollbar-track);
     }
 
     /* Tab entrance transition */
     .tab-pane-enter {
-      animation: tabEnter 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      animation: tabEnter 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
     }
     @keyframes tabEnter {
-      0% { opacity: 0; transform: translateY(8px); }
+      0% { opacity: 0; transform: translateY(6px); }
       100% { opacity: 1; transform: translateY(0); }
     }
 
@@ -155,7 +422,7 @@
       to { opacity: 1; }
     }
     @keyframes modalScale {
-      from { opacity: 0; transform: scale(0.95) translateY(8px); }
+      from { opacity: 0; transform: scale(0.96) translateY(6px); }
       to { opacity: 1; transform: scale(1) translateY(0); }
     }
 
@@ -169,9 +436,12 @@
     #file-preview-drawer {
       width: min(540px, 94vw);
       max-height: 100vh;
-      background: #060608;
-      border-left: 1px solid #1a1a22;
-      box-shadow: -10px 0 40px rgba(0,0,0,0.9);
+      background: var(--drawer-bg);
+      border-left: 1px solid var(--drawer-border);
+      box-shadow: -10px 0 40px rgba(0,0,0,0.3);
+    }
+    html.dark #file-preview-drawer {
+      box-shadow: -10px 0 40px rgba(0,0,0,0.95);
     }
     .preview-media {
       max-width: 100%;
@@ -183,7 +453,7 @@
       #file-preview-drawer {
         width: 100vw;
       }
-      #sidebar { padding: 0.75rem; border-right: 0; border-bottom: 1px solid #1a1a22; }
+      #sidebar { padding: 0.75rem; border-right: 0; border-bottom: 1px solid var(--border-sidebar); }
       #sidebar .brand-block { margin-bottom: .5rem; padding: .35rem .25rem; }
       #sidebar .desktop-quota { display: none; }
       #sidebar nav { display: flex; gap: .4rem; overflow-x: auto; padding-bottom: .2rem; scrollbar-width: none; }
@@ -193,7 +463,7 @@
       #sidebar nav > div { display: flex; align-items: center; gap: .4rem; padding: 0; margin: 0; border: 0; }
       #sidebar nav > div > span { display:none; }
       #sidebar nav > div > button { width: auto; white-space: nowrap; }
-      #mobile-account { display: flex; padding-top: .6rem; margin-top: .5rem; border-top: 1px solid #1a1a22; }
+      #mobile-account { display: flex; padding-top: .6rem; margin-top: .5rem; border-top: 1px solid var(--border-sidebar); }
       #main-header { padding: .75rem 1rem; }
       #tab-content-area { padding: .75rem; }
       .mobile-stack { flex-direction: column !important; align-items: stretch !important; }
@@ -201,7 +471,7 @@
     }
   </style>
 </head>
-<body class="bg-[#020203] text-neutral-100 min-h-screen font-sans antialiased custom-scrollbar selection:bg-sky-500 selection:text-black">
+<body class="min-h-screen font-sans antialiased custom-scrollbar selection:bg-sky-500 selection:text-white">
 
   <div id="app"></div>
 

@@ -159,11 +159,28 @@ mkdir -p "$STORAGE_ROOT"
 chmod 755 "$STORAGE_ROOT"
 
 # If current directory contains package.json, copy it to INSTALL_DIR
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || pwd)"
 if [ "$SCRIPT_DIR" != "$INSTALL_DIR" ] && [ -f "$SCRIPT_DIR/package.json" ]; then
-  echo "Copying files from $SCRIPT_DIR to $INSTALL_DIR..."
+  echo "Copying local files from $SCRIPT_DIR to $INSTALL_DIR..."
   cp -r "$SCRIPT_DIR/"* "$INSTALL_DIR/" 2>/dev/null || true
   cp "$SCRIPT_DIR/.*" "$INSTALL_DIR/" 2>/dev/null || true
+fi
+
+# If package.json is missing in INSTALL_DIR (e.g. ran via curl ... | bash), download application bundle
+if [ ! -f "$INSTALL_DIR/package.json" ]; then
+  SOURCE_URL="${APP_SOURCE_URL:-__APP_SOURCE_URL__}"
+  if [[ "$SOURCE_URL" =~ ^http ]]; then
+    echo -e "${CYAN}Fetching complete application bundle from ${SOURCE_URL}...${NC}"
+    curl -fsSL "${SOURCE_URL}/api/public/bundle.tar.gz" | tar -xz -C "$INSTALL_DIR" 2>/dev/null || {
+      curl -fsSL -o /tmp/app-bundle.tar.gz "${SOURCE_URL}/api/public/bundle.tar.gz" && tar -xzf /tmp/app-bundle.tar.gz -C "$INSTALL_DIR" && rm -f /tmp/app-bundle.tar.gz
+    }
+  fi
+fi
+
+if [ ! -f "$INSTALL_DIR/package.json" ]; then
+  echo -e "${RED}[ERROR] Failed to locate or download application files into ${INSTALL_DIR}.${NC}"
+  echo "Please ensure the server can reach ${SOURCE_URL} or run from the cloned project folder."
+  exit 1
 fi
 
 cd "$INSTALL_DIR"
@@ -179,6 +196,7 @@ fi
 
 cat > .env <<EOL
 PORT=${APP_PORT}
+APP_PORT=${APP_PORT}
 APP_NAME=Zen VPS Storage & S3 Cluster
 APP_URL=${PROTOCOL}://${USER_DOMAIN}
 STORAGE_ROOT=${STORAGE_ROOT}
@@ -205,6 +223,7 @@ npm install --production --no-audit --no-fund
 npm rebuild sqlite3 2>/dev/null || true
 
 echo -e "${BLUE}==> [6/7] Creating Systemd background service...${NC}"
+NODE_BIN=$(command -v node || echo "/usr/bin/node")
 SERVICE_FILE="/etc/systemd/system/vps-storage.service"
 cat > "$SERVICE_FILE" <<EOL
 [Unit]
@@ -215,10 +234,11 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=${INSTALL_DIR}
-ExecStart=/usr/bin/node index.js
+ExecStart=${NODE_BIN} index.js
 Restart=always
 RestartSec=5
 Environment=NODE_ENV=production
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 LimitNOFILE=65536
 
 [Install]

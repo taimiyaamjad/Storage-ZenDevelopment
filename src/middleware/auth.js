@@ -53,26 +53,80 @@ async function logAudit(userId, action, details = '', req = null) {
 }
 
 /**
- * Authentication Middleware: Verify JWT or Session Token
+ * Authentication Middleware: Verify JWT or API Key or Session Token
  */
 async function requireAuth(req, res, next) {
   try {
     let token = null;
-    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
-      token = req.headers.authorization.split(' ')[1];
+    const authHeader = req.headers.authorization || req.headers.Authorization || '';
+
+    if (authHeader.startsWith('Bearer ')) {
+      token = authHeader.slice(7).trim();
+    } else if (authHeader.startsWith('AWS4-HMAC-SHA256') || authHeader.startsWith('AWS ')) {
+      const credMatch = authHeader.match(/Credential=([^/]+)/) || authHeader.match(/AWS\s+([^:]+)/);
+      if (credMatch) token = credMatch[1].trim();
     } else if (req.cookies && req.cookies.session_token) {
       token = req.cookies.session_token;
     }
 
     if (!token) {
-      return res.status(401).json({ error: 'Authentication required. No session token provided.' });
+      token = req.headers['x-api-key'] || req.headers['x-blob-token'] || req.query.apiKey || req.query.token;
     }
 
-    const decoded = jwt.verify(token, JWT_SECRET);
-    const user = await getRow(`SELECT id, name, username, email, email_verified, role, storage_quota_bytes, used_storage_bytes, storage_overage_since, is_suspended, is_suspicious FROM users WHERE id = ?;`, [decoded.userId]);
+    if (!token) {
+      return res.status(401).json({ error: 'Authentication required. No session token or API key provided.' });
+    }
+
+    // 1. Try JWT session verification first
+    let user = null;
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET);
+      if (decoded && decoded.userId) {
+        user = await getRow(
+          `SELECT id, name, username, email, email_verified, role, storage_quota_bytes, used_storage_bytes, storage_overage_since, is_suspended, is_suspicious
+           FROM users WHERE id = ?;`,
+          [decoded.userId]
+        );
+      }
+    } catch (_) {
+      // Not a JWT, try API key lookup below
+    }
+
+    // 2. If not a valid JWT, look up as API Key in api_keys table
+    if (!user) {
+      const apiKey = await getRow(
+        `SELECT ak.*, u.id as user_id, u.name as user_name, u.username, u.email, u.email_verified, u.role, u.storage_quota_bytes, u.used_storage_bytes, u.is_suspended, u.is_suspicious
+         FROM api_keys ak
+         JOIN users u ON ak.user_id = u.id
+         WHERE (ak.secret_key = ? OR ak.key_id = ?) AND ak.is_active = 1;`,
+        [token, token]
+      );
+
+      if (apiKey) {
+        // Asynchronously update usage count
+        runQuery(
+          `UPDATE api_keys SET total_requests = total_requests + 1, last_used_at = CURRENT_TIMESTAMP WHERE id = ?;`,
+          [apiKey.id]
+        ).catch(() => {});
+
+        user = {
+          id: apiKey.user_id,
+          name: apiKey.user_name,
+          username: apiKey.username,
+          email: apiKey.email,
+          email_verified: apiKey.email_verified,
+          role: apiKey.role,
+          storage_quota_bytes: apiKey.storage_quota_bytes,
+          used_storage_bytes: apiKey.used_storage_bytes,
+          is_suspended: apiKey.is_suspended,
+          is_suspicious: apiKey.is_suspicious
+        };
+        req.apiKey = apiKey;
+      }
+    }
 
     if (!user) {
-      return res.status(401).json({ error: 'User account no longer exists.' });
+      return res.status(401).json({ error: 'Invalid or expired authentication credentials (session token or API key).' });
     }
 
     if (user.is_suspended) {
@@ -82,7 +136,7 @@ async function requireAuth(req, res, next) {
     req.user = user;
     next();
   } catch (err) {
-    return res.status(401).json({ error: 'Invalid or expired authentication session.' });
+    return res.status(401).json({ error: 'Authentication failed: ' + err.message });
   }
 }
 

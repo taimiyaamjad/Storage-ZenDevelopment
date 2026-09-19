@@ -11,7 +11,8 @@ const AppState = {
   viewMode: 'grid', // 'grid' or 'list'
   currentTab: 'files', // 'dashboard', 'files', 'shares', 'profile', 'admin'
   searchQuery: '',
-  isDarkMode: true,
+  theme: localStorage.getItem('vps_theme') || 'dark',
+  isDarkMode: (localStorage.getItem('vps_theme') || 'dark') === 'dark',
   adminTab: 'overview', // 'overview', 'users', 'storage', 'download-monitor', 'ip-history', 'smtp', 'settings', 'details', 'audit-logs', 'console'
   adminUsers: [],
   adminStats: null,
@@ -24,6 +25,10 @@ const AppState = {
   quotaRequestId: 0,
   displayedQuotaPercent: 0
 };
+
+// Sync HTML theme immediately
+document.documentElement.classList.toggle('dark', AppState.isDarkMode);
+document.documentElement.classList.toggle('light', !AppState.isDarkMode);
 
 // Global Toast Notification Helper
 function showToast(message, type = 'info') {
@@ -485,40 +490,50 @@ async function renderVerifyEmailChangeView(root) {
 // ==========================================
 function renderAuthView(container) {
   container.innerHTML = `
-    <div class="min-h-screen flex items-center justify-center p-4 bg-[#020203]">
-      <div class="w-full max-w-md pitch-card p-8 rounded-2xl shadow-2xl border border-[#1c1c24] tab-pane-enter">
+    <div class="min-h-screen flex flex-col items-center justify-center p-4 theme-main-bg transition-colors duration-200">
+      
+      <!-- Top Theme Switcher on Auth Screen -->
+      <div class="w-full max-w-md flex justify-end mb-3">
+        <button onclick="toggleDarkMode()" title="Toggle Light / Dark Theme" class="px-3 py-1.5 flex items-center gap-2 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:border-sky-500 hover:text-sky-600 dark:hover:text-sky-400 shadow-sm transition-all">
+          <i data-lucide="${AppState.isDarkMode ? 'sun' : 'moon'}" class="w-3.5 h-3.5 text-amber-500 dark:text-sky-400"></i>
+          <span>${AppState.isDarkMode ? 'Light Mode' : 'Dark Mode'}</span>
+        </button>
+      </div>
+
+      <div class="w-full max-w-md pitch-card p-8 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 tab-pane-enter">
         
-        <div class="text-center mb-8">
-          <div class="inline-flex p-3.5 rounded-2xl bg-gradient-to-br from-cyan-500/20 to-sky-500/10 text-cyan-400 mb-3 border border-cyan-500/30 shadow-lg shadow-cyan-500/10">
+        <div class="text-center mb-6">
+          <div class="inline-flex p-3 rounded-2xl bg-sky-500/15 text-sky-600 dark:text-sky-400 mb-3 border border-sky-500/20 shadow-sm">
             <i data-lucide="hard-drive" class="w-8 h-8"></i>
           </div>
-          <h1 class="text-2xl font-bold text-white tracking-tight">ZenStorage</h1>
-          <p class="text-neutral-400 text-xs mt-1">VPS SFTP Cloud & Free S3/Blob API Cluster</p>
+          <h1 class="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">ZenStorage</h1>
+          <p class="text-slate-500 dark:text-slate-400 text-xs mt-1">VPS SFTP Cloud & S3/Blob API Cluster</p>
         </div>
 
-        <div class="flex border-b border-[#1c1c24] mb-6">
-          <button id="tab-login-btn" onclick="switchAuthTab('login')" class="flex-1 py-2 text-sm font-semibold text-cyan-400 border-b-2 border-cyan-400 transition-all">Login</button>
-          <button id="tab-register-btn" onclick="switchAuthTab('register')" class="flex-1 py-2 text-sm font-semibold text-neutral-400 hover:text-white transition-all">Register</button>
+        <div class="flex border-b border-slate-200 dark:border-slate-800 mb-6">
+          <button id="tab-login-btn" onclick="switchAuthTab('login')" class="flex-1 py-2 text-sm font-semibold text-sky-600 dark:text-sky-400 border-b-2 border-sky-600 dark:border-sky-400 transition-all">Login</button>
+          <button id="tab-register-btn" onclick="switchAuthTab('register')" class="flex-1 py-2 text-sm font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-all">Register</button>
         </div>
 
         <!-- Login Form -->
         <form id="auth-login-form" onsubmit="handleLoginSubmit(event)">
           <div class="space-y-4">
             <div>
-              <label class="block text-xs font-semibold uppercase text-neutral-400 mb-1">Username or Email</label>
-              <input type="text" id="login-input-user" required class="w-full pitch-input rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none" placeholder="example or user@domain.com">
+              <label class="block text-xs font-semibold uppercase text-slate-500 dark:text-slate-400 mb-1">Username or Email</label>
+              <input type="text" id="login-input-user" required class="w-full pitch-input rounded-xl px-4 py-2.5 text-sm focus:outline-none" placeholder="admin or user@domain.com">
             </div>
 
             <div>
-              <label class="block text-xs font-semibold uppercase text-neutral-400 mb-1">Password</label>
-              <input type="password" id="login-input-pass" required class="w-full pitch-input rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none" placeholder="••••••••">
+              <label class="block text-xs font-semibold uppercase text-slate-500 dark:text-slate-400 mb-1">Password</label>
+              <input type="password" id="login-input-pass" required class="w-full pitch-input rounded-xl px-4 py-2.5 text-sm focus:outline-none" placeholder="••••••••">
             </div>
 
-            <div class="flex justify-end">
-              <button type="button" onclick="openForgotPasswordModal()" class="text-xs text-cyan-400 hover:underline">Forgot password?</button>
+            <div class="flex justify-between items-center text-xs">
+              <span class="text-slate-400 text-[11px]">Default: admin / Admin@123456</span>
+              <button type="button" onclick="openForgotPasswordModal()" class="text-sky-600 dark:text-sky-400 hover:underline">Forgot password?</button>
             </div>
 
-            <button type="submit" class="w-full bg-gradient-to-r from-sky-600 to-cyan-600 hover:from-sky-500 hover:to-cyan-500 text-white font-medium py-2.5 rounded-xl text-sm shadow-lg shadow-cyan-600/30 transition-all flex items-center justify-center gap-2">
+            <button type="submit" class="w-full bg-sky-600 hover:bg-sky-500 text-white font-medium py-2.5 rounded-xl text-sm shadow-md shadow-sky-600/25 transition-all flex items-center justify-center gap-2">
               <i data-lucide="log-in" class="w-4 h-4"></i> Sign In
             </button>
           </div>
@@ -528,27 +543,27 @@ function renderAuthView(container) {
         <form id="auth-register-form" onsubmit="handleRegisterSubmit(event)" class="hidden">
           <div class="space-y-3">
             <div>
-              <label class="block text-xs font-semibold uppercase text-neutral-400 mb-1">Full Name</label>
-              <input type="text" id="reg-name" required class="w-full pitch-input rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none" placeholder="example">
+              <label class="block text-xs font-semibold uppercase text-slate-500 dark:text-slate-400 mb-1">Full Name</label>
+              <input type="text" id="reg-name" required class="w-full pitch-input rounded-xl px-3.5 py-2 text-sm focus:outline-none" placeholder="Your Name">
             </div>
             <div>
-              <label class="block text-xs font-semibold uppercase text-neutral-400 mb-1">Username</label>
-              <input type="text" id="reg-username" required class="w-full pitch-input rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none" placeholder="example123">
+              <label class="block text-xs font-semibold uppercase text-slate-500 dark:text-slate-400 mb-1">Username</label>
+              <input type="text" id="reg-username" required class="w-full pitch-input rounded-xl px-3.5 py-2 text-sm focus:outline-none" placeholder="username">
             </div>
             <div>
-              <label class="block text-xs font-semibold uppercase text-neutral-400 mb-1">Email Address</label>
-              <input type="email" id="reg-email" required class="w-full pitch-input rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none" placeholder="example@gmail.com">
+              <label class="block text-xs font-semibold uppercase text-slate-500 dark:text-slate-400 mb-1">Email Address</label>
+              <input type="email" id="reg-email" required class="w-full pitch-input rounded-xl px-3.5 py-2 text-sm focus:outline-none" placeholder="user@example.com">
             </div>
             <div>
-              <label class="block text-xs font-semibold uppercase text-neutral-400 mb-1">Password</label>
-              <input type="password" id="reg-password" required minlength="6" class="w-full pitch-input rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none" placeholder="••••••••">
+              <label class="block text-xs font-semibold uppercase text-slate-500 dark:text-slate-400 mb-1">Password</label>
+              <input type="password" id="reg-password" required minlength="6" class="w-full pitch-input rounded-xl px-3.5 py-2 text-sm focus:outline-none" placeholder="••••••••">
             </div>
             <div>
-              <label class="block text-xs font-semibold uppercase text-neutral-400 mb-1">Confirm Password</label>
-              <input type="password" id="reg-confirm" required class="w-full pitch-input rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none" placeholder="••••••••">
+              <label class="block text-xs font-semibold uppercase text-slate-500 dark:text-slate-400 mb-1">Confirm Password</label>
+              <input type="password" id="reg-confirm" required class="w-full pitch-input rounded-xl px-3.5 py-2 text-sm focus:outline-none" placeholder="••••••••">
             </div>
 
-            <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2.5 rounded-xl text-sm shadow-lg shadow-emerald-600/30 transition-all flex items-center justify-center gap-2 mt-2">
+            <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2.5 rounded-xl text-sm shadow-md shadow-emerald-600/25 transition-all flex items-center justify-center gap-2 mt-2">
               <i data-lucide="user-plus" class="w-4 h-4"></i> Create Account
             </button>
           </div>
@@ -568,13 +583,13 @@ function switchAuthTab(tab) {
   if (tab === 'login') {
     loginForm.classList.remove('hidden');
     regForm.classList.add('hidden');
-    loginBtn.className = 'flex-1 py-2 text-sm font-semibold text-cyan-400 border-b-2 border-cyan-400 transition-all';
-    regBtn.className = 'flex-1 py-2 text-sm font-semibold text-neutral-400 hover:text-white transition-all';
+    loginBtn.className = 'flex-1 py-2 text-sm font-semibold text-sky-600 dark:text-sky-400 border-b-2 border-sky-600 dark:border-sky-400 transition-all';
+    regBtn.className = 'flex-1 py-2 text-sm font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-all';
   } else {
     loginForm.classList.add('hidden');
     regForm.classList.remove('hidden');
-    regBtn.className = 'flex-1 py-2 text-sm font-semibold text-cyan-400 border-b-2 border-cyan-400 transition-all';
-    loginBtn.className = 'flex-1 py-2 text-sm font-semibold text-neutral-400 hover:text-white transition-all';
+    regBtn.className = 'flex-1 py-2 text-sm font-semibold text-sky-600 dark:text-sky-400 border-b-2 border-sky-600 dark:border-sky-400 transition-all';
+    loginBtn.className = 'flex-1 py-2 text-sm font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-all';
   }
 }
 
@@ -627,49 +642,48 @@ async function handleRegisterSubmit(e) {
 // ==========================================
 function renderDashboardLayout(container) {
   const isDark = AppState.isDarkMode;
-  const bgMain = isDark ? 'bg-slate-900 text-slate-100' : 'bg-slate-100 text-slate-900';
 
   container.innerHTML = `
-    <div class="min-h-screen flex flex-col md:flex-row ${bgMain}">
+    <div class="min-h-screen flex flex-col md:flex-row theme-main-bg text-slate-900 dark:text-slate-100 transition-colors duration-200">
       <!-- Sidebar -->
-      <aside id="sidebar" class="w-full md:w-64 bg-slate-950 border-r border-slate-800 flex flex-col justify-between p-4 flex-shrink-0">
+      <aside id="sidebar" class="w-full md:w-64 theme-sidebar border-r flex flex-col justify-between p-4 flex-shrink-0 transition-colors duration-200">
         <div>
           <!-- Brand Logo -->
           <div class="brand-block flex items-center gap-3 px-2 py-3 mb-6">
-            <div class="p-2 bg-sky-500/20 text-sky-400 rounded-xl border border-sky-500/30">
+            <div class="p-2 bg-sky-500/15 text-sky-600 dark:text-sky-400 rounded-xl border border-sky-500/30 shadow-sm">
               <i data-lucide="hard-drive" class="w-6 h-6"></i>
             </div>
             <div>
-              <h2 class="font-bold text-white leading-none">ZenStorage</h2>
-              <span class="text-xs text-slate-400">SFTP Cloud Storage</span>
+              <h2 class="font-bold text-slate-900 dark:text-white leading-none">ZenStorage</h2>
+              <span class="text-xs text-slate-500 dark:text-slate-400">SFTP Cloud Storage</span>
             </div>
           </div>
 
           <!-- Nav Items -->
           <nav class="space-y-1">
-            <button onclick="navigateTab('dashboard')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${AppState.currentTab === 'dashboard' ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/30' : 'text-neutral-400 hover:bg-[#121217] hover:text-white'}">
+            <button onclick="navigateTab('dashboard')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${AppState.currentTab === 'dashboard' ? 'bg-sky-600 text-white shadow-md shadow-sky-600/25' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/80 hover:text-slate-900 dark:hover:text-white'}">
               <i data-lucide="layout-dashboard" class="w-4 h-4"></i> Dashboard
             </button>
-            <button onclick="navigateTab('files')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${AppState.currentTab === 'files' ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/30' : 'text-neutral-400 hover:bg-[#121217] hover:text-white'}">
+            <button onclick="navigateTab('files')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${AppState.currentTab === 'files' ? 'bg-sky-600 text-white shadow-md shadow-sky-600/25' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/80 hover:text-slate-900 dark:hover:text-white'}">
               <i data-lucide="folder" class="w-4 h-4"></i> File Manager
             </button>
-            <button onclick="navigateTab('s3cluster')" class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${AppState.currentTab === 's3cluster' ? 'bg-gradient-to-r from-sky-600 to-cyan-600 text-white shadow-lg shadow-cyan-600/30' : 'text-neutral-400 hover:bg-[#121217] hover:text-white'}">
+            <button onclick="navigateTab('s3cluster')" class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${AppState.currentTab === 's3cluster' ? 'bg-sky-600 text-white shadow-md shadow-sky-600/25' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/80 hover:text-slate-900 dark:hover:text-white'}">
               <span class="flex items-center gap-3">
-                <i data-lucide="cloud-lightning" class="w-4 h-4 text-cyan-400"></i> S3 & Blob API
+                <i data-lucide="cloud-lightning" class="w-4 h-4 text-sky-400"></i> S3 & Blob API
               </span>
-              <span class="px-1.5 py-0.5 text-[10px] font-bold rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">Cluster</span>
+              <span class="px-1.5 py-0.5 text-[10px] font-bold rounded bg-sky-500/20 text-sky-600 dark:text-sky-300 border border-sky-500/30">Cluster</span>
             </button>
-            <button onclick="navigateTab('shares')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${AppState.currentTab === 'shares' ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/30' : 'text-neutral-400 hover:bg-[#121217] hover:text-white'}">
+            <button onclick="navigateTab('shares')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${AppState.currentTab === 'shares' ? 'bg-sky-600 text-white shadow-md shadow-sky-600/25' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/80 hover:text-slate-900 dark:hover:text-white'}">
               <i data-lucide="share-2" class="w-4 h-4"></i> Share Links
             </button>
-            <button onclick="navigateTab('profile')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${AppState.currentTab === 'profile' ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/30' : 'text-neutral-400 hover:bg-[#121217] hover:text-white'}">
+            <button onclick="navigateTab('profile')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${AppState.currentTab === 'profile' ? 'bg-sky-600 text-white shadow-md shadow-sky-600/25' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/80 hover:text-slate-900 dark:hover:text-white'}">
               <i data-lucide="user" class="w-4 h-4"></i> Profile & IP Info
             </button>
 
             ${AppState.user && AppState.user.role === 'admin' ? `
-              <div class="pt-4 mt-4 border-t border-[#1a1a22]">
-                <span class="px-3 text-[10px] uppercase font-bold text-sky-400 tracking-wider">Admin Portal</span>
-                <button onclick="navigateTab('admin')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all mt-1 ${AppState.currentTab === 'admin' ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/30' : 'text-amber-400 hover:bg-[#121217]'}">
+              <div class="pt-4 mt-4 border-t border-slate-200 dark:border-slate-800">
+                <span class="px-3 text-[10px] uppercase font-bold text-amber-500 tracking-wider">Admin Portal</span>
+                <button onclick="navigateTab('admin')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all mt-1 ${AppState.currentTab === 'admin' ? 'bg-amber-600 text-white shadow-md shadow-amber-600/25' : 'text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30'}">
                   <i data-lucide="shield-alert" class="w-4 h-4"></i> System Admin
                 </button>
               </div>
@@ -678,32 +692,32 @@ function renderDashboardLayout(container) {
         </div>
 
         <!-- Storage Quota Widget -->
-        <div class="desktop-quota mt-8 pt-4 border-t border-[#1a1a22] space-y-3">
-          <div id="sidebar-quota-widget" class="pitch-card p-3 rounded-xl border border-[#1b1b22]">
-            <div class="flex justify-between text-xs text-neutral-400 mb-1">
+        <div class="desktop-quota mt-8 pt-4 border-t border-slate-200 dark:border-slate-800 space-y-3">
+          <div id="sidebar-quota-widget" class="pitch-card p-3 rounded-xl">
+            <div class="flex justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
               <span>Storage Used</span>
-              <span id="quota-percent-text">0%</span>
+              <span id="quota-percent-text" class="font-semibold text-slate-700 dark:text-slate-300">0%</span>
             </div>
-            <div class="w-full bg-[#16161c] rounded-full h-2 overflow-hidden">
+            <div class="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-2 overflow-hidden">
               <div id="quota-bar" class="bg-gradient-to-r from-sky-500 to-cyan-400 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
             </div>
-            <div class="text-[11px] text-neutral-400 mt-2 text-center" id="quota-detail-text">
+            <div class="text-[11px] text-slate-500 dark:text-slate-400 mt-2 text-center" id="quota-detail-text">
               Loading...
             </div>
           </div>
 
           <div id="mobile-account" class="flex items-center justify-between px-2 pt-2">
             <div class="flex items-center gap-2">
-              <div class="w-8 h-8 rounded-full bg-sky-500/20 text-sky-400 flex items-center justify-center text-xs font-bold uppercase border border-sky-500/30">
+              <div class="w-8 h-8 rounded-full bg-sky-500/20 text-sky-600 dark:text-sky-400 flex items-center justify-center text-xs font-bold uppercase border border-sky-500/30">
                 ${AppState.user.username.substring(0, 2)}
               </div>
               <div class="text-xs">
-                <div class="font-bold text-white truncate max-w-[100px]">${escapeHtml(AppState.user.name)}</div>
-                <div class="text-neutral-400 capitalize">${AppState.user.role}</div>
+                <div class="font-bold text-slate-900 dark:text-white truncate max-w-[100px]">${escapeHtml(AppState.user.name)}</div>
+                <div class="text-slate-500 dark:text-slate-400 capitalize">${AppState.user.role}</div>
               </div>
             </div>
 
-            <button onclick="logoutUser()" title="Logout" class="p-2 text-neutral-400 hover:text-red-400 rounded-lg hover:bg-[#15151b] transition-all">
+            <button onclick="logoutUser()" title="Logout" class="p-2 text-slate-400 hover:text-red-500 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">
               <i data-lucide="log-out" class="w-4 h-4"></i>
             </button>
           </div>
@@ -711,19 +725,20 @@ function renderDashboardLayout(container) {
       </aside>
 
       <!-- Main Content Container -->
-      <main class="flex-1 flex flex-col min-w-0 overflow-hidden bg-[#020203]">
+      <main class="flex-1 flex flex-col min-w-0 overflow-hidden theme-main-bg transition-colors duration-200">
         <!-- Top Nav Bar -->
-        <header id="main-header" class="bg-[#050507]/90 border-b border-[#181820] px-4 sm:px-6 py-4 backdrop-blur-md space-y-3">
+        <header id="main-header" class="theme-header border-b px-4 sm:px-6 py-3.5 backdrop-blur-md space-y-3 transition-colors duration-200">
           <div class="flex items-center justify-between gap-3">
             <div class="flex items-center gap-3 min-w-0">
-              <h1 class="text-lg font-bold text-white capitalize flex items-center gap-2 truncate">
+              <h1 class="text-lg font-bold text-slate-900 dark:text-white capitalize flex items-center gap-2 truncate">
                 ${AppState.currentTab === 'files' ? 'File Manager' : AppState.currentTab === 's3cluster' ? 'S3 & Vercel Blob Cluster API' : AppState.currentTab}
               </h1>
             </div>
 
             <div class="flex items-center gap-3 shrink-0">
-              <button onclick="toggleDarkMode()" class="p-2 text-neutral-400 hover:text-white rounded-lg hover:bg-[#15151b] transition-all">
-                <i data-lucide="${AppState.isDarkMode ? 'sun' : 'moon'}" class="w-5 h-5"></i>
+              <button onclick="toggleDarkMode()" title="Toggle Theme" class="px-3 py-1.5 flex items-center gap-2 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:border-sky-500 hover:text-sky-600 dark:hover:text-sky-400 shadow-sm transition-all">
+                <i data-lucide="${AppState.isDarkMode ? 'sun' : 'moon'}" class="w-4 h-4 text-amber-500 dark:text-sky-400"></i>
+                <span>${AppState.isDarkMode ? 'Light Mode' : 'Dark Mode'}</span>
               </button>
             </div>
           </div>
@@ -750,7 +765,10 @@ function navigateTab(tabName) {
 
 function toggleDarkMode() {
   AppState.isDarkMode = !AppState.isDarkMode;
+  AppState.theme = AppState.isDarkMode ? 'dark' : 'light';
+  localStorage.setItem('vps_theme', AppState.theme);
   document.documentElement.classList.toggle('dark', AppState.isDarkMode);
+  document.documentElement.classList.toggle('light', !AppState.isDarkMode);
   renderApp();
 }
 
@@ -863,7 +881,7 @@ async function renderFileManagerTab(container) {
   container.innerHTML = `
     <div class="space-y-4">
       <!-- File Action Bar -->
-      <div class="flex flex-wrap items-center justify-between gap-3 glass-card p-4 rounded-2xl border border-slate-800">
+      <div class="flex flex-wrap items-center justify-between gap-3 glass-card p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
         <div class="flex flex-wrap items-center gap-2">
           <!-- Upload Button -->
           <label class="bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold px-4 py-2.5 rounded-xl cursor-pointer flex items-center gap-2 shadow-lg shadow-sky-600/20 transition-all">
@@ -872,25 +890,25 @@ async function renderFileManagerTab(container) {
           </label>
 
           <!-- Create Folder -->
-          <button onclick="openCreateFolderModal()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold px-3.5 py-2.5 rounded-xl flex items-center gap-2 transition-all">
+          <button onclick="openCreateFolderModal()" class="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold px-3.5 py-2.5 rounded-xl flex items-center gap-2 transition-all border border-slate-200 dark:border-slate-700">
             <i data-lucide="folder-plus" class="w-4 h-4"></i> New Folder
           </button>
 
           <!-- Refresh -->
-          <button id="file-refresh-button" onclick="refreshFileManager()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 p-2.5 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed" title="Refresh">
+          <button id="file-refresh-button" onclick="refreshFileManager()" class="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 p-2.5 rounded-xl transition-all border border-slate-200 dark:border-slate-700 disabled:opacity-50 disabled:cursor-not-allowed" title="Refresh">
             <i data-lucide="refresh-cw" class="w-4 h-4"></i>
           </button>
         </div>
 
         <!-- Bulk Action Buttons (Visible when items selected) -->
         <div id="bulk-actions" class="hidden flex items-center gap-2">
-          <button onclick="handleBulkDelete()" class="bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white text-xs font-semibold px-3 py-2 rounded-xl flex items-center gap-1.5 transition-all">
+          <button onclick="handleBulkDelete()" class="bg-red-600/20 hover:bg-red-600 text-red-600 dark:text-red-400 hover:text-white text-xs font-semibold px-3 py-2 rounded-xl flex items-center gap-1.5 transition-all">
             <i data-lucide="trash-2" class="w-4 h-4"></i> Delete Selected (<span id="selected-count">0</span>)
           </button>
-          <button onclick="openCompressModal()" class="bg-purple-600/20 hover:bg-purple-600 text-purple-400 hover:text-white text-xs font-semibold px-3 py-2 rounded-xl flex items-center gap-1.5 transition-all">
+          <button onclick="openCompressModal()" class="bg-purple-600/20 hover:bg-purple-600 text-purple-600 dark:text-purple-400 hover:text-white text-xs font-semibold px-3 py-2 rounded-xl flex items-center gap-1.5 transition-all">
             <i data-lucide="archive" class="w-4 h-4"></i> Compress
           </button>
-          <button onclick="openMoveSelectedPrompt()" class="bg-cyan-600/20 hover:bg-cyan-600 text-cyan-400 hover:text-white text-xs font-semibold px-3 py-2 rounded-xl flex items-center gap-1.5 transition-all">
+          <button onclick="openMoveSelectedPrompt()" class="bg-cyan-600/20 hover:bg-cyan-600 text-cyan-600 dark:text-cyan-400 hover:text-white text-xs font-semibold px-3 py-2 rounded-xl flex items-center gap-1.5 transition-all">
             <i data-lucide="folder-input" class="w-4 h-4"></i> Move
           </button>
         </div>
@@ -899,14 +917,14 @@ async function renderFileManagerTab(container) {
         <div class="flex items-center gap-2">
           <div class="relative">
             <i data-lucide="search" class="w-4 h-4 absolute left-3 top-2.5 text-slate-400"></i>
-            <input type="text" id="file-search-input" oninput="handleFileSearch(event)" placeholder="Search files..." class="bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-4 py-2 text-xs text-white focus:outline-none focus:border-sky-500 w-48">
+            <input type="text" id="file-search-input" oninput="handleFileSearch(event)" placeholder="Search files..." class="pitch-input rounded-xl pl-9 pr-4 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-sky-500 w-48">
           </div>
 
-          <div class="flex bg-slate-900 p-1 rounded-xl border border-slate-800">
-            <button onclick="setFileViewMode('grid')" class="p-1.5 rounded-lg ${AppState.viewMode === 'grid' ? 'bg-sky-600 text-white' : 'text-slate-400'}" title="Grid View">
+          <div class="flex bg-slate-100 dark:bg-slate-900 p-1 rounded-xl border border-slate-200 dark:border-slate-800">
+            <button onclick="setFileViewMode('grid')" class="p-1.5 rounded-lg ${AppState.viewMode === 'grid' ? 'bg-sky-600 text-white' : 'text-slate-500 dark:text-slate-400'}" title="Grid View">
               <i data-lucide="grid" class="w-4 h-4"></i>
             </button>
-            <button onclick="setFileViewMode('list')" class="p-1.5 rounded-lg ${AppState.viewMode === 'list' ? 'bg-sky-600 text-white' : 'text-slate-400'}" title="List View">
+            <button onclick="setFileViewMode('list')" class="p-1.5 rounded-lg ${AppState.viewMode === 'list' ? 'bg-sky-600 text-white' : 'text-slate-500 dark:text-slate-400'}" title="List View">
               <i data-lucide="list" class="w-4 h-4"></i>
             </button>
           </div>
@@ -914,29 +932,29 @@ async function renderFileManagerTab(container) {
       </div>
 
       <!-- Download from URL -->
-      <div class="glass-card p-4 rounded-2xl border border-slate-800">
+      <div class="glass-card p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
         <div class="flex items-start gap-3 mb-4">
-          <div class="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 shrink-0">
+          <div class="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-600 dark:text-cyan-400 shrink-0">
             <i data-lucide="cloud-download" class="w-4 h-4"></i>
           </div>
           <div>
-            <h3 class="text-sm font-bold text-white">Download from URL</h3>
-            <p class="text-xs text-slate-500 mt-1">Paste a direct HTTP/HTTPS file link. The server will run <span class="font-mono text-cyan-300">wget</span> in the background and save the finished file in this directory.</p>
+            <h3 class="text-sm font-bold text-slate-900 dark:text-white">Download from URL</h3>
+            <p class="text-xs text-slate-600 dark:text-slate-400 mt-1">Paste a direct HTTP/HTTPS file link. The server will run <span class="font-mono text-cyan-600 dark:text-cyan-300 font-semibold">wget</span> in the background and save the finished file in this directory.</p>
           </div>
         </div>
 
         <form onsubmit="startUrlDownload(event)" class="grid grid-cols-1 lg:grid-cols-[1fr_240px_auto] gap-2">
-          <input id="url-download-link" type="url" required placeholder="https://example.com/file.zip" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-cyan-500">
-          <input id="url-download-filename" type="text" placeholder="File name (optional)" maxlength="240" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-cyan-500">
+          <input id="url-download-link" type="url" required placeholder="https://example.com/file.zip" class="w-full pitch-input rounded-xl px-3 py-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-cyan-500">
+          <input id="url-download-filename" type="text" placeholder="File name (optional)" maxlength="240" class="w-full pitch-input rounded-xl px-3 py-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-cyan-500">
           <button type="submit" class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold px-4 py-2.5 rounded-xl flex items-center justify-center gap-2">
             <i data-lucide="download" class="w-4 h-4"></i> Start Download
           </button>
         </form>
 
-        <div class="mt-3 rounded-xl bg-slate-950/50 border border-slate-800 p-3">
-          <p class="text-[11px] leading-5 text-slate-400">
-            <span class="font-semibold text-slate-300">How it works:</span>
-            1) Your link is checked, 2) <span class="font-mono text-cyan-300">wget</span> downloads it on the VPS in the background,
+        <div class="mt-3 rounded-xl bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 p-3">
+          <p class="text-[11px] leading-5 text-slate-600 dark:text-slate-400">
+            <span class="font-bold text-slate-800 dark:text-slate-200">How it works:</span>
+            1) Your link is checked, 2) <span class="font-mono text-cyan-600 dark:text-cyan-300">wget</span> downloads it on the VPS in the background,
             3) the completed file is moved into your current folder, and 4) your file list and storage usage are refreshed.
             If the URL does not provide a useful filename, enter one in the File name box. Existing names are automatically made unique.
           </p>
@@ -945,7 +963,7 @@ async function renderFileManagerTab(container) {
       </div>
 
       <!-- Breadcrumbs Path Navigator -->
-      <div id="file-breadcrumbs" class="flex items-center gap-1 text-xs text-slate-400 bg-slate-950/40 px-4 py-2.5 rounded-xl border border-slate-800">
+      <div id="file-breadcrumbs" class="flex items-center gap-1 text-xs text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-950/40 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800">
         <!-- Rendered dynamically -->
       </div>
 
@@ -1105,33 +1123,33 @@ function renderFileItems() {
     container.innerHTML = filtered.map(file => {
       const isSelected = AppState.selectedPaths.includes(file.path);
       const icon = file.isDirectory ? 'folder' : getFileIcon(file.name);
-      const iconColor = file.isDirectory ? 'text-amber-400' : 'text-sky-400';
+      const iconColor = file.isDirectory ? 'text-amber-500 dark:text-amber-400' : 'text-sky-600 dark:text-sky-400';
 
       return `
         <div class="glass-card p-4 rounded-xl relative group hover:border-sky-500/50 transition-all cursor-pointer ${isSelected ? 'border-sky-500 bg-sky-500/10' : ''}" onclick="toggleSelectFile('${file.path}', event)">
           
           <div class="flex items-center justify-between mb-3">
-            <input type="checkbox" ${isSelected ? 'checked' : ''} onclick="event.stopPropagation(); toggleSelectFile('${file.path}')" class="rounded border-slate-700 text-sky-600">
+            <input type="checkbox" ${isSelected ? 'checked' : ''} onclick="event.stopPropagation(); toggleSelectFile('${file.path}')" class="rounded border-slate-300 dark:border-slate-700 text-sky-600">
             
             <!-- Context Menu Button -->
-            <button onclick="event.stopPropagation(); openFileContextMenu('${file.path}', ${file.isDirectory}, event)" class="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800">
+            <button onclick="event.stopPropagation(); openFileContextMenu('${file.path}', ${file.isDirectory}, event)" class="opacity-0 group-hover:opacity-100 p-1 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800">
               <i data-lucide="more-vertical" class="w-4 h-4"></i>
             </button>
           </div>
 
           <div class="flex flex-col items-center text-center" onclick="event.stopPropagation(); ${file.isDirectory ? `navigateToPath('${file.path}')` : `openFilePreview('${file.path}')`}">
             <i data-lucide="${icon}" class="w-10 h-10 ${iconColor} mb-2"></i>
-            <div class="text-xs font-semibold text-slate-200 truncate w-full" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</div>
-            <div class="text-[10px] text-slate-500 mt-1">${file.isDirectory ? 'Folder' : formatBytes(file.size)}</div>
+            <div class="text-xs font-bold text-slate-900 dark:text-white truncate w-full" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</div>
+            <div class="text-[11px] font-medium text-slate-600 dark:text-slate-400 mt-1">${file.isDirectory ? 'Folder' : formatBytes(file.size)}</div>
           </div>
         </div>
       `;
     }).join('');
   } else {
     // List View
-    container.className = 'glass-card rounded-2xl overflow-hidden divide-y divide-slate-800/60';
+    container.className = 'glass-card rounded-2xl overflow-hidden divide-y divide-slate-200 dark:divide-slate-800/60';
     container.innerHTML = `
-      <div class="px-4 py-3 bg-slate-950/60 flex items-center text-xs font-semibold text-slate-400">
+      <div class="px-4 py-3 bg-slate-100 dark:bg-slate-950/60 flex items-center text-xs font-bold text-slate-700 dark:text-slate-300">
         <span class="w-8"></span>
         <span class="flex-1">Name</span>
         <span class="w-32">Size</span>
@@ -1141,22 +1159,22 @@ function renderFileItems() {
       ${filtered.map(file => {
         const isSelected = AppState.selectedPaths.includes(file.path);
         const icon = file.isDirectory ? 'folder' : getFileIcon(file.name);
-        const iconColor = file.isDirectory ? 'text-amber-400' : 'text-sky-400';
+        const iconColor = file.isDirectory ? 'text-amber-500 dark:text-amber-400' : 'text-sky-600 dark:text-sky-400';
 
         return `
-          <div class="px-4 py-3 flex items-center text-xs hover:bg-slate-800/40 transition-all ${isSelected ? 'bg-sky-500/10' : ''}">
-            <input type="checkbox" ${isSelected ? 'checked' : ''} onclick="toggleSelectFile('${file.path}')" class="w-4 h-4 rounded border-slate-700 text-sky-600 mr-3">
+          <div class="px-4 py-3 flex items-center text-xs hover:bg-slate-50 dark:hover:bg-slate-850 transition-all ${isSelected ? 'bg-sky-500/10' : ''}">
+            <input type="checkbox" ${isSelected ? 'checked' : ''} onclick="toggleSelectFile('${file.path}')" class="w-4 h-4 rounded border-slate-300 dark:border-slate-700 text-sky-600 mr-3">
             
             <div class="flex-1 flex items-center gap-3 cursor-pointer" onclick="${file.isDirectory ? `navigateToPath('${file.path}')` : `openFilePreview('${file.path}')`}">
               <i data-lucide="${icon}" class="w-5 h-5 ${iconColor}"></i>
-              <span class="font-medium text-slate-200 hover:text-sky-400">${escapeHtml(file.name)}</span>
+              <span class="font-semibold text-slate-900 dark:text-white hover:text-sky-600 dark:hover:text-sky-400">${escapeHtml(file.name)}</span>
             </div>
 
-            <span class="w-32 text-slate-400">${file.isDirectory ? '--' : formatBytes(file.size)}</span>
-            <span class="w-40 text-slate-400">${new Date(file.mtime).toLocaleString()}</span>
+            <span class="w-32 font-medium text-slate-600 dark:text-slate-400">${file.isDirectory ? '--' : formatBytes(file.size)}</span>
+            <span class="w-40 font-medium text-slate-600 dark:text-slate-400">${new Date(file.mtime).toLocaleString()}</span>
 
             <div class="w-16 text-right">
-              <button onclick="openFileContextMenu('${file.path}', ${file.isDirectory}, event)" class="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800">
+              <button onclick="openFileContextMenu('${file.path}', ${file.isDirectory}, event)" class="p-1 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800">
                 <i data-lucide="more-vertical" class="w-4 h-4"></i>
               </button>
             </div>
@@ -1909,31 +1927,31 @@ async function renderS3ClusterTab(container) {
             </div>
 
             <div class="flex flex-wrap items-center gap-3">
-              <label class="px-3 py-2 bg-[#121218] hover:bg-[#1a1a24] border border-[#22222e] text-neutral-300 text-xs font-medium rounded-xl cursor-pointer flex items-center gap-2 transition-all">
-                <i data-lucide="file-up" class="w-3.5 h-3.5 text-cyan-400"></i> Choose Local File (Optional)
+              <label class="px-3 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-medium rounded-xl cursor-pointer flex items-center gap-2 transition-all">
+                <i data-lucide="file-up" class="w-3.5 h-3.5 text-sky-500 dark:text-sky-400"></i> Choose Local File (Optional)
                 <input type="file" id="pg-local-file" class="hidden" onchange="handlePlaygroundFileSelect(event)">
               </label>
-              <span id="pg-file-name-preview" class="text-xs text-neutral-400 truncate max-w-[220px]">No file chosen (using text payload)</span>
+              <span id="pg-file-name-preview" class="text-xs text-slate-500 dark:text-slate-400 truncate max-w-[220px]">No file chosen (using text payload)</span>
             </div>
 
-            <button onclick="executePlaygroundUpload()" id="btn-pg-submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs py-2.5 rounded-xl shadow-lg shadow-emerald-600/25 transition-all flex items-center justify-center gap-2">
+            <button onclick="executePlaygroundUpload()" id="btn-pg-submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs py-2.5 rounded-xl shadow-md shadow-emerald-600/25 transition-all flex items-center justify-center gap-2">
               <i data-lucide="send" class="w-4 h-4"></i> Execute API Upload Request
             </button>
           </div>
 
           <!-- Playground Output Response -->
-          <div class="flex flex-col justify-between p-4 rounded-xl bg-[#040406] border border-[#181822]">
+          <div class="flex flex-col justify-between p-4 rounded-xl bg-slate-900 text-slate-100 border border-slate-800 shadow-inner">
             <div>
               <div class="flex items-center justify-between mb-2">
-                <span class="text-xs font-bold text-neutral-400 uppercase tracking-wider">Live Response Payload</span>
-                <span id="pg-res-status" class="text-xs font-mono font-bold text-neutral-500">Ready</span>
+                <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Live Response Payload</span>
+                <span id="pg-res-status" class="text-xs font-mono font-bold text-slate-400">Ready</span>
               </div>
-              <pre id="pg-res-json" class="text-[11px] font-mono text-cyan-300 bg-[#020203] p-3 rounded-lg border border-[#14141b] overflow-x-auto max-h-[220px] custom-scrollbar">// Click "Execute API Upload Request" to test live endpoint...</pre>
+              <pre id="pg-res-json" class="text-[11px] font-mono text-cyan-300 bg-slate-950 p-3 rounded-lg border border-slate-800 overflow-x-auto max-h-[220px] custom-scrollbar">// Click "Execute API Upload Request" to test live endpoint...</pre>
             </div>
 
-            <div id="pg-preview-action" class="mt-4 pt-3 border-t border-[#14141c] hidden flex items-center justify-between">
-              <span class="text-xs text-neutral-400">Test Object Uploaded:</span>
-              <a id="pg-preview-link" href="#" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-cyan-600/20 hover:bg-cyan-600 text-cyan-300 hover:text-white rounded-lg text-xs font-semibold transition-all">
+            <div id="pg-preview-action" class="mt-4 pt-3 border-t border-slate-800 hidden flex items-center justify-between">
+              <span class="text-xs text-slate-400">Test Object Uploaded:</span>
+              <a id="pg-preview-link" href="#" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-sky-600/20 hover:bg-sky-600 text-sky-300 hover:text-white rounded-lg text-xs font-semibold transition-all">
                 <i data-lucide="external-link" class="w-3.5 h-3.5"></i> Open Direct URL
               </a>
             </div>
@@ -2515,16 +2533,16 @@ async function renderShareLinksTab(container) {
     <div class="space-y-6">
       <div class="flex items-center justify-between">
         <div>
-          <h2 class="text-lg font-bold text-white">Active Share Links</h2>
-          <p class="text-xs text-slate-400">Manage your public share links and expiration limits (Default Max: 3 Links)</p>
+          <h2 class="text-lg font-bold text-slate-900 dark:text-white">Active Share Links</h2>
+          <p class="text-xs text-slate-600 dark:text-slate-400">Manage your public share links and expiration limits (Default Max: 3 Links)</p>
         </div>
-        <button onclick="renderShareLinksTab(document.getElementById('tab-content-area'))" class="p-2 bg-slate-800 text-slate-300 rounded-xl hover:bg-slate-700">
+        <button onclick="renderShareLinksTab(document.getElementById('tab-content-area'))" class="p-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700">
           <i data-lucide="refresh-cw" class="w-4 h-4"></i>
         </button>
       </div>
 
-      <div id="share-links-list" class="glass-card rounded-2xl overflow-hidden">
-        <div class="p-8 text-center text-slate-400 text-sm">Loading share links...</div>
+      <div id="share-links-list" class="glass-card rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800">
+        <div class="p-8 text-center text-slate-500 text-sm">Loading share links...</div>
       </div>
     </div>
   `;
@@ -2537,9 +2555,9 @@ async function renderShareLinksTab(container) {
     if (links.length === 0) {
       listDiv.innerHTML = `
         <div class="p-12 text-center text-slate-500">
-          <i data-lucide="link" class="w-10 h-10 mb-2 text-slate-600 inline-block"></i>
-          <p class="text-sm font-medium">No share links created yet</p>
-          <p class="text-xs mt-1">Right-click any file in the File Manager to generate a share link.</p>
+          <i data-lucide="link" class="w-10 h-10 mb-2 text-slate-400 dark:text-slate-600 inline-block"></i>
+          <p class="text-sm font-semibold text-slate-800 dark:text-slate-200">No share links created yet</p>
+          <p class="text-xs mt-1 text-slate-500 dark:text-slate-400">Right-click any file in the File Manager to generate a share link.</p>
         </div>
       `;
       if (window.lucide) lucide.createIcons();
@@ -2547,8 +2565,8 @@ async function renderShareLinksTab(container) {
     }
 
     listDiv.innerHTML = `
-      <div class="divide-y divide-slate-800/60">
-        <div class="px-4 py-3 bg-slate-950/60 flex items-center text-xs font-semibold text-slate-400">
+      <div class="divide-y divide-slate-200 dark:divide-slate-800/60">
+        <div class="px-4 py-3 bg-slate-100 dark:bg-slate-950/60 flex items-center text-xs font-bold text-slate-700 dark:text-slate-300">
           <span class="flex-1">File Path</span>
           <span class="w-36">Expires</span>
           <span class="w-24 text-center">Views</span>
@@ -2556,22 +2574,22 @@ async function renderShareLinksTab(container) {
           <span class="w-28 text-right">Actions</span>
         </div>
         ${links.map(l => `
-          <div class="px-4 py-3 flex items-center text-xs">
-            <div class="flex-1 truncate font-medium text-slate-200">
+          <div class="px-4 py-3 flex items-center text-xs hover:bg-slate-50 dark:hover:bg-slate-850 transition-all">
+            <div class="flex-1 truncate font-semibold text-slate-900 dark:text-white">
               ${escapeHtml(l.file_path)}
             </div>
-            <span class="w-36 text-slate-400">${l.expires_at ? new Date(l.expires_at).toLocaleString() : 'Never'}</span>
-            <span class="w-24 text-center font-bold text-sky-400">${l.view_count}</span>
+            <span class="w-36 font-medium text-slate-600 dark:text-slate-400">${l.expires_at ? new Date(l.expires_at).toLocaleString() : 'Never'}</span>
+            <span class="w-24 text-center font-bold text-sky-600 dark:text-sky-400">${l.view_count}</span>
             <span class="w-24 text-center">
-              <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${l.is_active && !l.isExpired ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}">
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${l.is_active && !l.isExpired ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' : 'bg-red-500/20 text-red-600 dark:text-red-400'}">
                 ${l.is_active && !l.isExpired ? 'Active' : 'Expired'}
               </span>
             </span>
             <div class="w-28 text-right flex items-center justify-end gap-2">
-              <button onclick="navigator.clipboard.writeText('${l.shareUrl}'); showToast('Share URL copied!', 'success');" class="p-1.5 text-slate-400 hover:text-sky-400 rounded-lg hover:bg-slate-800" title="Copy Link">
+              <button onclick="navigator.clipboard.writeText('${l.shareUrl}'); showToast('Share URL copied!', 'success');" class="p-1.5 text-slate-500 dark:text-slate-400 hover:text-sky-600 dark:hover:text-sky-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800" title="Copy Link">
                 <i data-lucide="copy" class="w-4 h-4"></i>
               </button>
-              <button onclick="revokeShareLink('${l.id}')" class="p-1.5 text-slate-400 hover:text-red-400 rounded-lg hover:bg-slate-800" title="Revoke Link">
+              <button onclick="revokeShareLink('${l.id}')" class="p-1.5 text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800" title="Revoke Link">
                 <i data-lucide="trash-2" class="w-4 h-4"></i>
               </button>
             </div>
@@ -2605,55 +2623,55 @@ async function renderDashboardTab(container) {
   container.innerHTML = `
     <div class="space-y-6 tab-pane-enter">
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div class="pitch-card pitch-card-hover p-5 rounded-2xl border border-[#1b1b22]">
+        <div class="pitch-card pitch-card-hover p-5 rounded-2xl border border-slate-200 dark:border-[#1b1b22]">
           <div class="flex items-center justify-between mb-3">
-            <span class="text-xs font-semibold text-neutral-400 uppercase tracking-wider">Storage Quota</span>
-            <i data-lucide="pie-chart" class="w-4 h-4 text-sky-400"></i>
+            <span class="text-xs font-semibold text-slate-500 dark:text-neutral-400 uppercase tracking-wider">Storage Quota</span>
+            <i data-lucide="pie-chart" class="w-4 h-4 text-sky-600 dark:text-sky-400"></i>
           </div>
-          <div class="text-xl font-bold text-white mb-2" id="dash-storage-text">Loading...</div>
-          <div class="w-full bg-[#16161c] h-2 rounded-full overflow-hidden">
+          <div class="text-xl font-bold text-slate-900 dark:text-white mb-2" id="dash-storage-text">Loading...</div>
+          <div class="w-full bg-slate-100 dark:bg-[#16161c] h-2 rounded-full overflow-hidden">
             <div id="dash-storage-bar" class="bg-gradient-to-r from-sky-500 to-cyan-400 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
           </div>
         </div>
 
-        <div class="pitch-card pitch-card-hover p-5 rounded-2xl border border-[#1b1b22]">
+        <div class="pitch-card pitch-card-hover p-5 rounded-2xl border border-slate-200 dark:border-[#1b1b22]">
           <div class="flex items-center justify-between mb-3">
-            <span class="text-xs font-semibold text-neutral-400 uppercase tracking-wider">Active Shares</span>
-            <i data-lucide="share-2" class="w-4 h-4 text-emerald-400"></i>
+            <span class="text-xs font-semibold text-slate-500 dark:text-neutral-400 uppercase tracking-wider">Active Shares</span>
+            <i data-lucide="share-2" class="w-4 h-4 text-emerald-600 dark:text-emerald-400"></i>
           </div>
-          <div class="text-xl font-bold text-white" id="dash-share-count">0 / 3 Active</div>
-          <p class="text-xs text-neutral-500 mt-2">Max active share links</p>
+          <div class="text-xl font-bold text-slate-900 dark:text-white" id="dash-share-count">0 / 3 Active</div>
+          <p class="text-xs text-slate-500 dark:text-neutral-400 mt-2">Max active share links</p>
         </div>
 
-        <div onclick="navigateTab('s3cluster')" class="pitch-card pitch-card-hover p-5 rounded-2xl border border-[#1b1b22] cursor-pointer group">
+        <div onclick="navigateTab('s3cluster')" class="pitch-card pitch-card-hover p-5 rounded-2xl border border-slate-200 dark:border-[#1b1b22] cursor-pointer group">
           <div class="flex items-center justify-between mb-3">
-            <span class="text-xs font-semibold text-neutral-400 uppercase tracking-wider">S3 & Blob API</span>
-            <i data-lucide="cloud-lightning" class="w-4 h-4 text-cyan-400 group-hover:scale-110 transition-transform"></i>
+            <span class="text-xs font-semibold text-slate-500 dark:text-neutral-400 uppercase tracking-wider">S3 & Blob API</span>
+            <i data-lucide="cloud-lightning" class="w-4 h-4 text-cyan-600 dark:text-cyan-400 group-hover:scale-110 transition-transform"></i>
           </div>
-          <div class="text-xl font-bold text-white flex items-center gap-1.5">
-            Free Cluster <span class="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-normal">Active</span>
+          <div class="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+            Free Cluster <span class="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-600 dark:text-cyan-300 font-semibold">Active</span>
           </div>
-          <p class="text-xs text-neutral-500 mt-2 flex items-center justify-between">
+          <p class="text-xs text-slate-500 dark:text-neutral-400 mt-2 flex items-center justify-between">
             <span>S3 & Blob SDK</span>
-            <span class="text-cyan-400 font-semibold flex items-center gap-1">Open <i data-lucide="arrow-right" class="w-3 h-3"></i></span>
+            <span class="text-cyan-600 dark:text-cyan-400 font-semibold flex items-center gap-1">Open <i data-lucide="arrow-right" class="w-3 h-3"></i></span>
           </p>
         </div>
 
-        <div class="pitch-card pitch-card-hover p-5 rounded-2xl border border-[#1b1b22]">
+        <div class="pitch-card pitch-card-hover p-5 rounded-2xl border border-slate-200 dark:border-[#1b1b22]">
           <div class="flex items-center justify-between mb-3">
-            <span class="text-xs font-semibold text-neutral-400 uppercase tracking-wider">Session IP</span>
-            <i data-lucide="shield-check" class="w-4 h-4 text-purple-400"></i>
+            <span class="text-xs font-semibold text-slate-500 dark:text-neutral-400 uppercase tracking-wider">Session IP</span>
+            <i data-lucide="shield-check" class="w-4 h-4 text-purple-600 dark:text-purple-400"></i>
           </div>
-          <div class="text-sm font-bold text-white font-mono truncate" id="dash-ip-text">Detecting...</div>
-          <p class="text-xs text-neutral-500 mt-2">IPv4 & IPv6 Tracking Active</p>
+          <div class="text-sm font-bold text-slate-900 dark:text-white font-mono truncate" id="dash-ip-text">Detecting...</div>
+          <p class="text-xs text-slate-500 dark:text-neutral-400 mt-2">IPv4 & IPv6 Tracking Active</p>
         </div>
       </div>
 
-      <div class="pitch-card p-6 rounded-2xl border border-[#1b1b22]">
-        <h3 class="text-sm font-bold text-white mb-4 flex items-center gap-2">
-          <i data-lucide="clock" class="w-4 h-4 text-sky-400"></i> Recent Login Activity
+      <div class="pitch-card p-6 rounded-2xl border border-slate-200 dark:border-[#1b1b22]">
+        <h3 class="text-sm font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+          <i data-lucide="clock" class="w-4 h-4 text-sky-600 dark:text-sky-400"></i> Recent Login Activity
         </h3>
-        <div id="dash-recent-logins" class="text-xs text-neutral-400">Loading recent logins...</div>
+        <div id="dash-recent-logins" class="text-xs text-slate-600 dark:text-neutral-400">Loading recent logins...</div>
       </div>
       <div id="dash-contact-details" class="grid md:grid-cols-2 gap-4"></div>
     </div>
@@ -2707,30 +2725,30 @@ async function renderDashboardTab(container) {
 async function renderProfileTab(container) {
   container.innerHTML = `
     <div class="max-w-2xl mx-auto space-y-6">
-      <div class="glass-card p-6 rounded-2xl border border-slate-800 space-y-4">
-        <h3 class="text-lg font-bold text-white border-b border-slate-800 pb-3">User Profile Information</h3>
+      <div class="glass-card p-6 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+        <h3 class="text-lg font-bold text-slate-900 dark:text-white border-b border-slate-200 dark:border-slate-800 pb-3">User Profile Information</h3>
         
         <form onsubmit="handleProfileUpdate(event)" class="space-y-4">
           <div>
-            <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Full Name</label>
-            <input type="text" id="prof-name" value="${escapeHtml(AppState.user.name)}" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-sky-500">
+            <label class="block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400 mb-1">Full Name</label>
+            <input type="text" id="prof-name" value="${escapeHtml(AppState.user.name)}" class="w-full pitch-input rounded-xl px-4 py-2.5 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-sky-500">
           </div>
 
           <div>
-            <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Username</label>
-            <input type="text" id="prof-username" value="${escapeHtml(AppState.user.username)}" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-sky-500">
+            <label class="block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400 mb-1">Username</label>
+            <input type="text" id="prof-username" value="${escapeHtml(AppState.user.username)}" class="w-full pitch-input rounded-xl px-4 py-2.5 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-sky-500">
           </div>
 
-          <div class="pt-4 border-t border-slate-800">
-            <h4 class="text-xs font-bold uppercase text-sky-400 mb-3">Change Password (Optional)</h4>
+          <div class="pt-4 border-t border-slate-200 dark:border-slate-800">
+            <h4 class="text-xs font-bold uppercase text-sky-600 dark:text-sky-400 mb-3">Change Password (Optional)</h4>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label class="block text-xs text-slate-400 mb-1">Current Password</label>
-                <input type="password" id="prof-curr-pass" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white">
+                <label class="block text-xs text-slate-600 dark:text-slate-400 mb-1">Current Password</label>
+                <input type="password" id="prof-curr-pass" class="w-full pitch-input rounded-xl px-3 py-2 text-sm text-slate-900 dark:text-white">
               </div>
               <div>
-                <label class="block text-xs text-slate-400 mb-1">New Password</label>
-                <input type="password" id="prof-new-pass" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white">
+                <label class="block text-xs text-slate-600 dark:text-slate-400 mb-1">New Password</label>
+                <input type="password" id="prof-new-pass" class="w-full pitch-input rounded-xl px-3 py-2 text-sm text-slate-900 dark:text-white">
               </div>
             </div>
           </div>
@@ -2742,18 +2760,18 @@ async function renderProfileTab(container) {
       </div>
 
       <!-- Email Verification System -->
-      <div class="glass-card p-6 rounded-2xl border border-slate-800 space-y-4">
-        <h3 class="text-sm font-bold text-white border-b border-slate-800 pb-3">Email Address Verification</h3>
-        <p class="text-xs text-slate-400">Current Email: <span class="font-bold text-white">${escapeHtml(AppState.user.email)}</span></p>
+      <div class="glass-card p-6 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+        <h3 class="text-sm font-bold text-slate-900 dark:text-white border-b border-slate-200 dark:border-slate-800 pb-3">Email Address Verification</h3>
+        <p class="text-xs text-slate-600 dark:text-slate-400">Current Email: <span class="font-bold text-slate-900 dark:text-white">${escapeHtml(AppState.user.email)}</span></p>
 
         <form onsubmit="handleEmailChangeRequest(event)" class="space-y-3">
           <div>
-            <label class="block text-xs text-slate-400 mb-1">New Email Address</label>
-            <input type="email" id="email-new-input" required class="w-full bg-slate-900 border border-slate-800 rounded-lg px-4 py-2 text-sm text-white" placeholder="newemail@example.com">
+            <label class="block text-xs text-slate-600 dark:text-slate-400 mb-1">New Email Address</label>
+            <input type="email" id="email-new-input" required class="w-full pitch-input rounded-xl px-4 py-2 text-sm text-slate-900 dark:text-white" placeholder="newemail@example.com">
           </div>
           <div>
-            <label class="block text-xs text-slate-400 mb-1">Current Password Verification</label>
-            <input type="password" id="email-pass-input" required class="w-full bg-slate-900 border border-slate-800 rounded-lg px-4 py-2 text-sm text-white">
+            <label class="block text-xs text-slate-600 dark:text-slate-400 mb-1">Current Password Verification</label>
+            <input type="password" id="email-pass-input" required class="w-full pitch-input rounded-xl px-4 py-2 text-sm text-slate-900 dark:text-white">
           </div>
           <button type="submit" class="bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs px-4 py-2 rounded-lg">
             Send Email Verification Link

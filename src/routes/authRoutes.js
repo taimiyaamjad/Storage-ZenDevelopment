@@ -24,13 +24,17 @@ async function sendAccountVerificationEmail(userId, name, email) {
  */
 router.post('/register', async (req, res) => {
   try {
-    const { name, username, email, password, confirmPassword } = req.body;
+    const name = (req.body.name || '').trim();
+    const username = (req.body.username || '').trim();
+    const email = (req.body.email || '').trim();
+    const password = req.body.password ? String(req.body.password) : '';
+    const confirmPassword = req.body.confirmPassword !== undefined ? String(req.body.confirmPassword) : null;
 
     if (!name || !username || !email || !password) {
-      return res.status(400).json({ error: 'All registration fields are required.' });
+      return res.status(400).json({ error: 'All registration fields (name, username, email, password) are required.' });
     }
 
-    if (password !== confirmPassword) {
+    if (confirmPassword !== null && password !== confirmPassword) {
       return res.status(400).json({ error: 'Passwords do not match.' });
     }
 
@@ -118,9 +122,26 @@ router.post('/register', async (req, res) => {
     await EmailService.sendTemplatedEmail('welcome', email, { name, username });
     await sendAccountVerificationEmail(newUserId, name, email);
 
+    // Issue instant session token for seamless API / client onboarding
+    const token = jwt.sign(
+      { userId: newUserId, role: 'user' },
+      JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
     return res.status(201).json({
       message: 'Registration successful! Please check your email for the welcome and verification messages.',
-      userId: newUserId
+      token,
+      userId: newUserId,
+      user: {
+        id: newUserId,
+        name,
+        username: username.toLowerCase(),
+        email: email.toLowerCase(),
+        role: 'user',
+        emailVerified: false,
+        storageQuotaBytes: defaultQuotaBytes
+      }
     });
   } catch (err) {
     console.error('Registration Error:', err);
@@ -133,7 +154,9 @@ router.post('/register', async (req, res) => {
  */
 router.post('/login', async (req, res) => {
   try {
-    const { usernameOrEmail, password } = req.body;
+    const rawIdentifier = req.body.usernameOrEmail || req.body.username || req.body.email || req.body.identifier || req.body.user;
+    const usernameOrEmail = rawIdentifier ? String(rawIdentifier).trim() : '';
+    const password = req.body.password ? String(req.body.password) : '';
 
     if (!usernameOrEmail || !password) {
       return res.status(400).json({ error: 'Username/Email and password are required.' });

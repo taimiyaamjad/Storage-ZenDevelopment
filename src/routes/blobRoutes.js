@@ -59,12 +59,12 @@ function resolveBlobPath(userId, rawPathname) {
 }
 
 /**
- * 1. PUT /api/v1/blob/:pathname(*)
+ * 1. PUT /api/v1/blob/*pathname
  * Direct binary/raw stream upload (Vercel Blob compatible)
  */
-router.put('/:pathname(*)', requireApiKeyOrSession, requirePermission('write'), async (req, res) => {
+router.put('/*pathname', requireApiKeyOrSession, requirePermission('write'), async (req, res) => {
   try {
-    let rawPathname = req.params.pathname;
+    let rawPathname = Array.isArray(req.params.pathname) ? req.params.pathname.join('/') : (req.params.pathname || '');
     if (!rawPathname) {
       return res.status(400).json({ error: 'Blob pathname is required in URL.' });
     }
@@ -89,14 +89,9 @@ router.put('/:pathname(*)', requireApiKeyOrSession, requirePermission('write'), 
     const writeStream = fs.createWriteStream(absolutePath);
     let bytesWritten = 0;
 
-    req.on('data', chunk => {
-      bytesWritten += chunk.length;
-    });
-
-    req.pipe(writeStream);
-
-    writeStream.on('finish', async () => {
+    const onFinish = async () => {
       try {
+        const stat = fs.statSync(absolutePath);
         await checkQuota(req.user.id, 0);
         await syncUsedStorage(req.user.id);
 
@@ -110,18 +105,27 @@ router.put('/:pathname(*)', requireApiKeyOrSession, requirePermission('write'), 
           pathname: pathname,
           contentType: contentType,
           contentDisposition: `inline; filename="${fileName}"`,
-          size: bytesWritten,
+          size: stat.size,
           uploadedAt: new Date().toISOString()
         });
-      } catch (postErr) {
+      } catch (err) {
         if (fs.existsSync(absolutePath)) fs.unlinkSync(absolutePath);
-        return res.status(postErr.statusCode || 500).json({ error: postErr.message });
+        return res.status(err.statusCode || 500).json({ error: err.message });
       }
-    });
+    };
 
-    writeStream.on('error', err => {
+    writeStream.on('finish', onFinish);
+    writeStream.on('error', (err) => {
       return res.status(500).json({ error: 'Failed to write blob: ' + err.message });
     });
+
+    if (req.body && (Buffer.isBuffer(req.body) || typeof req.body === 'string' || (typeof req.body === 'object' && Object.keys(req.body).length > 0))) {
+      const buf = Buffer.isBuffer(req.body) ? req.body : (typeof req.body === 'string' ? Buffer.from(req.body) : Buffer.from(JSON.stringify(req.body)));
+      writeStream.end(buf);
+    } else {
+      req.on('data', chunk => { bytesWritten += chunk.length; });
+      req.pipe(writeStream);
+    }
   } catch (err) {
     return res.status(err.statusCode || 500).json({ error: err.message });
   }
@@ -238,45 +242,52 @@ router.get('/list', requireApiKeyOrSession, requirePermission('read'), async (re
 });
 
 /**
- * 4. GET /api/v1/blob/download/:pathname(*) and GET /api/v1/blob/:pathname(*)
+ * 4. GET /api/v1/blob/download/*pathname and GET /api/v1/blob/*pathname
  * Stream blob with HTTP Range support for media seeking & downloads
  */
-router.get(['/download/:pathname(*)', '/:pathname(*)'], async (req, res) => {
+router.get(['/download/*pathname', '/*pathname'], async (req, res) => {
   try {
-    const rawPathname = req.params.pathname;
+    const rawPathname = Array.isArray(req.params.pathname) ? req.params.pathname.join('/') : (req.params.pathname || '');
     if (!rawPathname) return res.status(400).json({ error: 'Missing pathname.' });
 
     // Try finding blob across user storage or check auth
-    // First, if token or apiKey provided in headers or query:
     let userId = null;
-    const authHeader = req.headers['authorization'] || '';
+    const authHeader = req.headers['authorization'] || req.headers['Authorization'] || '';
     let token = null;
     if (authHeader.startsWith('Bearer ')) token = authHeader.slice(7).trim();
     if (!token) token = req.headers['x-api-key'] || req.headers['x-blob-token'] || req.query.token || req.query.apiKey;
 
     if (token) {
-      const apiKey = await getRow(
-        `SELECT user_id FROM api_keys WHERE (secret_key = ? OR key_id = ?) AND is_active = 1;`,
-        [token, token]
-      );
-      if (apiKey) userId = apiKey.user_id;
+      try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        if (decoded && decoded.userId) userId = decoded.userId;
+      } catch (_) {}
+
+      if (!userId) {
+        const apiKey = await getRow(
+          `SELECT user_id FROM api_keys WHERE (secret_key = ? OR key_id = ?) AND is_active = 1;`,
+          [token, token]
+        );
+        if (apiKey) userId = apiKey.user_id;
+      }
     }
 
-    // If still no user, find the user who owns this blob in /s3_storage
     let targetFile = null;
     if (userId) {
       const resolved = resolveBlobPath(userId, rawPathname);
-      if (fs.existsSync(resolved.absolutePath)) {
+      if (fs.existsSync(resolved.absolutePath) && fs.statSync(resolved.absolutePath).isFile()) {
         targetFile = resolved.absolutePath;
       }
-    } else {
-      // Find across users in storage
-      const storageRoot = process.env.STORAGE_ROOT || '/tmp/vps_sftp_storage';
+    }
+
+    // Fallback: search across all users in SFTP storage root
+    if (!targetFile) {
+      const storageRoot = SFTPService.STORAGE_ROOT || process.env.STORAGE_ROOT || '/var/vps_storage';
       if (fs.existsSync(storageRoot)) {
         const userDirs = fs.readdirSync(storageRoot);
         for (const uDir of userDirs) {
           const check = path.join(storageRoot, uDir, 's3_storage', rawPathname);
-          if (fs.existsSync(check)) {
+          if (fs.existsSync(check) && fs.statSync(check).isFile()) {
             targetFile = check;
             break;
           }
@@ -335,12 +346,12 @@ router.get(['/download/:pathname(*)', '/:pathname(*)'], async (req, res) => {
 });
 
 /**
- * 5. HEAD /api/v1/blob/:pathname(*)
+ * 5. HEAD /api/v1/blob/*pathname
  * Metadata inspection
  */
-router.head('/:pathname(*)', async (req, res) => {
+router.head('/*pathname', async (req, res) => {
   try {
-    const rawPathname = req.params.pathname;
+    const rawPathname = Array.isArray(req.params.pathname) ? req.params.pathname.join('/') : (req.params.pathname || '');
     const storageRoot = process.env.STORAGE_ROOT || '/tmp/vps_sftp_storage';
     let targetFile = null;
 
@@ -374,12 +385,12 @@ router.head('/:pathname(*)', async (req, res) => {
 });
 
 /**
- * 6. DELETE /api/v1/blob/:pathname(*) and POST /api/v1/blob/delete
+ * 6. DELETE /api/v1/blob/*pathname and POST /api/v1/blob/delete
  * Delete single or multiple blobs (Vercel Blob del() compatible)
  */
-router.delete('/:pathname(*)', requireApiKeyOrSession, requirePermission('delete'), async (req, res) => {
+router.delete('/*pathname', requireApiKeyOrSession, requirePermission('delete'), async (req, res) => {
   try {
-    const rawPathname = req.params.pathname;
+    const rawPathname = Array.isArray(req.params.pathname) ? req.params.pathname.join('/') : (req.params.pathname || '');
     const { pathname, absolutePath } = resolveBlobPath(req.user.id, rawPathname);
 
     if (!fs.existsSync(absolutePath)) {
