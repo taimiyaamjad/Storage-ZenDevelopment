@@ -768,11 +768,8 @@ function renderDashboardLayout(container) {
             <button onclick="navigateTab('files')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${AppState.currentTab === 'files' ? 'bg-sky-600 text-white shadow-md shadow-sky-600/25' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/80 hover:text-slate-900 dark:hover:text-white'}">
               <i data-lucide="folder" class="w-4 h-4"></i> File Manager
             </button>
-            <button onclick="navigateTab('s3cluster')" class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${AppState.currentTab === 's3cluster' ? 'bg-sky-600 text-white shadow-md shadow-sky-600/25' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/80 hover:text-slate-900 dark:hover:text-white'}">
-              <span class="flex items-center gap-3">
-                <i data-lucide="cloud-lightning" class="w-4 h-4 text-sky-400"></i> S3 & Blob API
-              </span>
-              <span class="px-1.5 py-0.5 text-[10px] font-bold rounded bg-sky-500/20 text-sky-600 dark:text-sky-300 border border-sky-500/30">Cluster</span>
+            <button onclick="navigateTab('s3cluster')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${AppState.currentTab === 's3cluster' ? 'bg-sky-600 text-white shadow-md shadow-sky-600/25' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/80 hover:text-slate-900 dark:hover:text-white'}">
+              <i data-lucide="cloud-lightning" class="w-4 h-4"></i> S3 & Blob API
             </button>
             <button onclick="navigateTab('shares')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${AppState.currentTab === 'shares' ? 'bg-sky-600 text-white shadow-md shadow-sky-600/25' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/80 hover:text-slate-900 dark:hover:text-white'}">
               <i data-lucide="share-2" class="w-4 h-4"></i> Share Links
@@ -1433,6 +1430,10 @@ function openFileContextMenu(filePath, isDirectory, e) {
       <i data-lucide="download" class="w-3.5 h-3.5 text-sky-400"></i> Download
     </button>
 
+    <button onclick="openEmbedLinkModal('${filePath}')" class="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 flex items-center gap-2 text-cyan-300">
+      <i data-lucide="link-2" class="w-3.5 h-3.5 text-cyan-400"></i> Direct Embed / Public Link
+    </button>
+
     <button onclick="createShareLinkModal('${filePath}')" class="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 flex items-center gap-2 text-slate-200">
       <i data-lucide="share-2" class="w-3.5 h-3.5 text-emerald-400"></i> Create Share Link
     </button>
@@ -1625,6 +1626,84 @@ function extractArchivePrompt(archivePath) {
     updateQuotaWidget();
   })
   .catch(err => showToast(err.message, 'error'));
+}
+
+function openEmbedLinkModal(filePath) {
+  const cleanPath = String(filePath || '').replace(/^\/+/, '').replace(/^s3_storage\//, '');
+  const fileName = cleanPath.split('/').pop() || 'file';
+  const origin = window.location.origin;
+  const encodedPath = encodeURIComponent(cleanPath).replace(/%2F/g, '/');
+
+  const directEmbedUrl = `${origin}/api/v1/blob/${encodedPath}`;
+  const directDownloadUrl = `${origin}/api/v1/blob/${encodedPath}?download=1`;
+  const htmlImgTag = `<img src="${directEmbedUrl}" alt="${fileName}" />`;
+  const markdownTag = `![${fileName}](${directEmbedUrl})`;
+
+  const modal = document.createElement('div');
+  modal.id = 'embed-link-modal';
+  modal.className = 'fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4';
+  modal.innerHTML = `
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl text-slate-100">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2 font-bold text-base text-white">
+          <i data-lucide="link-2" class="w-5 h-5 text-cyan-400"></i>
+          Direct Embed & Public Link
+        </div>
+        <button onclick="document.getElementById('embed-link-modal').remove()" class="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <p class="text-xs text-slate-400">
+        Direct link with full CORS, fast CDN caching, and inline rendering. Embed anywhere in websites, HTML, React, blogs, or Discord.
+      </p>
+
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="block font-semibold text-slate-300 mb-1">Direct Embed URL (Inline View)</label>
+          <div class="flex gap-2">
+            <input type="text" readonly value="${directEmbedUrl}" class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-cyan-300 font-mono text-[11px] focus:outline-none">
+            <button onclick="copyToClipboard('${directEmbedUrl}', this, 'Copied Direct URL!')" class="px-3 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl font-semibold shrink-0 transition-all">Copy</button>
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-semibold text-slate-300 mb-1">HTML Image Tag</label>
+          <div class="flex gap-2">
+            <input type="text" readonly value="${escapeHtml(htmlImgTag)}" class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-300 font-mono text-[11px] focus:outline-none">
+            <button onclick="copyToClipboard('${escapeHtml(htmlImgTag).replace(/'/g, "\\'")}', this, 'Copied HTML!')" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-semibold shrink-0 transition-all">Copy</button>
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-semibold text-slate-300 mb-1">Markdown Embed</label>
+          <div class="flex gap-2">
+            <input type="text" readonly value="${escapeHtml(markdownTag)}" class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-300 font-mono text-[11px] focus:outline-none">
+            <button onclick="copyToClipboard('${escapeHtml(markdownTag).replace(/'/g, "\\'")}', this, 'Copied Markdown!')" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-semibold shrink-0 transition-all">Copy</button>
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-semibold text-slate-300 mb-1">Direct Download Link (?download=1)</label>
+          <div class="flex gap-2">
+            <input type="text" readonly value="${directDownloadUrl}" class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-400 font-mono text-[11px] focus:outline-none">
+            <button onclick="copyToClipboard('${directDownloadUrl}', this, 'Copied Download URL!')" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-semibold shrink-0 transition-all">Copy</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between pt-3 border-t border-slate-800">
+        <a href="${directEmbedUrl}" target="_blank" rel="noopener noreferrer" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs rounded-xl flex items-center gap-1.5 transition-all">
+          <i data-lucide="external-link" class="w-3.5 h-3.5 text-cyan-400"></i> Open in New Tab
+        </a>
+        <button onclick="document.getElementById('embed-link-modal').remove()" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold rounded-xl transition-all">
+          Done
+        </button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  if (window.lucide) lucide.createIcons();
 }
 
 function createShareLinkModal(filePath) {
@@ -2058,14 +2137,30 @@ async function renderS3ClusterTab(container) {
                 <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Live Response Payload</span>
                 <span id="pg-res-status" class="text-xs font-mono font-bold text-slate-400">Ready</span>
               </div>
-              <pre id="pg-res-json" class="text-[11px] font-mono text-cyan-300 bg-slate-950 p-3 rounded-lg border border-slate-800 overflow-x-auto max-h-[220px] custom-scrollbar">// Click "Execute API Upload Request" to test live endpoint...</pre>
+              <pre id="pg-res-json" class="text-[11px] font-mono text-cyan-300 bg-slate-950 p-3 rounded-lg border border-slate-800 overflow-x-auto max-h-[200px] custom-scrollbar">// Click "Execute API Upload Request" to test live endpoint...</pre>
             </div>
 
-            <div id="pg-preview-action" class="mt-4 pt-3 border-t border-slate-800 hidden flex items-center justify-between">
-              <span class="text-xs text-slate-400">Test Object Uploaded:</span>
-              <a id="pg-preview-link" href="#" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-sky-600/20 hover:bg-sky-600 text-sky-300 hover:text-white rounded-lg text-xs font-semibold transition-all">
-                <i data-lucide="external-link" class="w-3.5 h-3.5"></i> Open Direct URL
-              </a>
+            <div id="pg-preview-action" class="mt-3 pt-3 border-t border-slate-800 hidden space-y-2">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-semibold text-emerald-400 flex items-center gap-1.5">
+                  <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> Direct Embed Link Ready
+                </span>
+                <a id="pg-preview-link" href="#" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 px-2.5 py-1 bg-sky-600/20 hover:bg-sky-600 text-sky-300 hover:text-white rounded-lg text-[11px] font-semibold transition-all">
+                  <i data-lucide="external-link" class="w-3 h-3"></i> View Inline
+                </a>
+              </div>
+              
+              <div class="grid grid-cols-2 sm:grid-cols-3 gap-1.5 pt-1">
+                <button id="btn-copy-direct-url" onclick="" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-medium rounded-lg flex items-center justify-center gap-1.5 transition-all">
+                  <i data-lucide="link" class="w-3 h-3 text-cyan-400"></i> Direct URL
+                </button>
+                <button id="btn-copy-html-tag" onclick="" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-medium rounded-lg flex items-center justify-center gap-1.5 transition-all">
+                  <i data-lucide="code" class="w-3 h-3 text-emerald-400"></i> HTML &lt;img&gt;
+                </button>
+                <button id="btn-copy-markdown-tag" onclick="" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-medium rounded-lg flex items-center justify-center gap-1.5 transition-all col-span-2 sm:col-span-1">
+                  <i data-lucide="file-text" class="w-3 h-3 text-amber-400"></i> Markdown
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -2487,10 +2582,30 @@ async function executePlaygroundUpload() {
 
     if (res.ok) {
       showToast('API Upload Successful!', 'success');
-      const directUrl = data.url || data.downloadUrl || url;
+      const directUrl = data.url || data.downloadUrl || (window.location.origin + url);
+      const downloadUrl = data.downloadUrl || (directUrl + '?download=1');
+      const fileName = (data.pathname || filename || 'file').split('/').pop();
+      const htmlTag = `<img src="${directUrl}" alt="${fileName}" />`;
+      const markdownTag = `![${fileName}](${directUrl})`;
+
       if (previewAction && previewLink) {
         previewLink.href = directUrl;
         previewAction.classList.remove('hidden');
+
+        const btnCopyUrl = document.getElementById('btn-copy-direct-url');
+        if (btnCopyUrl) {
+          btnCopyUrl.onclick = function() { copyToClipboard(directUrl, this, 'Copied Direct URL!'); };
+        }
+
+        const btnCopyHtml = document.getElementById('btn-copy-html-tag');
+        if (btnCopyHtml) {
+          btnCopyHtml.onclick = function() { copyToClipboard(htmlTag, this, 'Copied HTML <img> tag!'); };
+        }
+
+        const btnCopyMd = document.getElementById('btn-copy-markdown-tag');
+        if (btnCopyMd) {
+          btnCopyMd.onclick = function() { copyToClipboard(markdownTag, this, 'Copied Markdown code!'); };
+        }
       }
       loadS3ClusterData().catch(() => {});
       updateQuotaWidget().catch(() => {});
@@ -2735,56 +2850,99 @@ async function renderDashboardTab(container) {
   container.innerHTML = `
     <div class="space-y-6 tab-pane-enter">
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <!-- Storage Quota -->
         <div class="pitch-card pitch-card-hover p-5 rounded-2xl border border-slate-200 dark:border-[#1b1b22]">
           <div class="flex items-center justify-between mb-3">
             <span class="text-xs font-semibold text-slate-500 dark:text-neutral-400 uppercase tracking-wider">Storage Quota</span>
             <i data-lucide="pie-chart" class="w-4 h-4 text-sky-600 dark:text-sky-400"></i>
           </div>
-          <div class="text-xl font-bold text-slate-900 dark:text-white mb-2" id="dash-storage-text">Loading...</div>
+          <div class="text-lg font-bold text-slate-900 dark:text-white mb-2" id="dash-storage-text">Loading...</div>
           <div class="w-full bg-slate-100 dark:bg-[#16161c] h-2 rounded-full overflow-hidden">
             <div id="dash-storage-bar" class="bg-gradient-to-r from-sky-500 to-cyan-400 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
           </div>
         </div>
 
+        <!-- Monthly Bandwidth (15 GB Default) -->
         <div class="pitch-card pitch-card-hover p-5 rounded-2xl border border-slate-200 dark:border-[#1b1b22]">
           <div class="flex items-center justify-between mb-3">
-            <span class="text-xs font-semibold text-slate-500 dark:text-neutral-400 uppercase tracking-wider">Active Shares</span>
-            <i data-lucide="share-2" class="w-4 h-4 text-emerald-600 dark:text-emerald-400"></i>
+            <span class="text-xs font-semibold text-slate-500 dark:text-neutral-400 uppercase tracking-wider">Monthly Bandwidth</span>
+            <i data-lucide="activity" class="w-4 h-4 text-indigo-500"></i>
           </div>
-          <div class="text-xl font-bold text-slate-900 dark:text-white" id="dash-share-count">0 / 3 Active</div>
-          <p class="text-xs text-slate-500 dark:text-neutral-400 mt-2">Max active share links</p>
+          <div class="text-lg font-bold text-slate-900 dark:text-white mb-2" id="dash-bandwidth-text">0 / 15 GB</div>
+          <div class="w-full bg-slate-100 dark:bg-[#16161c] h-2 rounded-full overflow-hidden mb-1.5">
+            <div id="dash-bandwidth-bar" class="bg-gradient-to-r from-indigo-500 to-purple-500 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+          </div>
+          <div class="flex items-center justify-between text-[11px] text-slate-500 dark:text-neutral-400" id="dash-bandwidth-sub">
+            <span>Auto-resets monthly</span>
+            <span id="dash-bandwidth-reset">30d left</span>
+          </div>
         </div>
 
+        <!-- Monthly API Requests (100k Default) -->
+        <div class="pitch-card pitch-card-hover p-5 rounded-2xl border border-slate-200 dark:border-[#1b1b22]">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-xs font-semibold text-slate-500 dark:text-neutral-400 uppercase tracking-wider">Monthly API Calls</span>
+            <i data-lucide="zap" class="w-4 h-4 text-amber-500"></i>
+          </div>
+          <div class="text-lg font-bold text-slate-900 dark:text-white mb-2" id="dash-api-text">0 / 100k Req</div>
+          <div class="w-full bg-slate-100 dark:bg-[#16161c] h-2 rounded-full overflow-hidden mb-1.5">
+            <div id="dash-api-bar" class="bg-gradient-to-r from-amber-500 to-yellow-400 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+          </div>
+          <div class="flex items-center justify-between text-[11px] text-slate-500 dark:text-neutral-400" id="dash-api-sub">
+            <span>S3 & Blob Requests</span>
+            <span id="dash-api-percent">0%</span>
+          </div>
+        </div>
+
+        <!-- Direct Embed Links & S3 Cluster -->
         <div onclick="navigateTab('s3cluster')" class="pitch-card pitch-card-hover p-5 rounded-2xl border border-slate-200 dark:border-[#1b1b22] cursor-pointer group">
           <div class="flex items-center justify-between mb-3">
-            <span class="text-xs font-semibold text-slate-500 dark:text-neutral-400 uppercase tracking-wider">S3 & Blob API</span>
+            <span class="text-xs font-semibold text-slate-500 dark:text-neutral-400 uppercase tracking-wider">Embeds & S3 API</span>
             <i data-lucide="cloud-lightning" class="w-4 h-4 text-cyan-600 dark:text-cyan-400 group-hover:scale-110 transition-transform"></i>
           </div>
-          <div class="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-            Free Cluster <span class="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-600 dark:text-cyan-300 font-semibold">Active</span>
+          <div class="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+            Embed Ready <span class="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-600 dark:text-cyan-300 font-semibold">Active</span>
           </div>
           <p class="text-xs text-slate-500 dark:text-neutral-400 mt-2 flex items-center justify-between">
-            <span>S3 & Blob SDK</span>
+            <span>Direct CDN links</span>
             <span class="text-cyan-600 dark:text-cyan-400 font-semibold flex items-center gap-1">Open <i data-lucide="arrow-right" class="w-3 h-3"></i></span>
           </p>
         </div>
+      </div>
 
-        <div class="pitch-card pitch-card-hover p-5 rounded-2xl border border-slate-200 dark:border-[#1b1b22]">
-          <div class="flex items-center justify-between mb-3">
-            <span class="text-xs font-semibold text-slate-500 dark:text-neutral-400 uppercase tracking-wider">Session IP</span>
-            <i data-lucide="shield-check" class="w-4 h-4 text-purple-600 dark:text-purple-400"></i>
+      <!-- Secondary Info Row -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="pitch-card p-6 rounded-2xl border border-slate-200 dark:border-[#1b1b22]">
+          <h3 class="text-sm font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+            <i data-lucide="clock" class="w-4 h-4 text-sky-600 dark:text-sky-400"></i> Recent Login Activity
+          </h3>
+          <div id="dash-recent-logins" class="text-xs text-slate-600 dark:text-neutral-400">Loading recent logins...</div>
+        </div>
+
+        <div class="pitch-card p-6 rounded-2xl border border-slate-200 dark:border-[#1b1b22] space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <i data-lucide="shield-check" class="w-4 h-4 text-emerald-500"></i> Active Security & Quotas
+            </h3>
+            <span class="text-xs font-mono px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300" id="dash-ip-badge">Detecting IP...</span>
           </div>
-          <div class="text-sm font-bold text-slate-900 dark:text-white font-mono truncate" id="dash-ip-text">Detecting...</div>
-          <p class="text-xs text-slate-500 dark:text-neutral-400 mt-2">IPv4 & IPv6 Tracking Active</p>
+          <div class="text-xs text-slate-600 dark:text-slate-400 space-y-2 pt-1">
+            <div class="flex items-center justify-between py-1 border-b border-slate-100 dark:border-slate-800/60">
+              <span>Bandwidth Policy</span>
+              <span class="font-semibold text-slate-900 dark:text-white">15 GB / month (Auto-reset)</span>
+            </div>
+            <div class="flex items-center justify-between py-1 border-b border-slate-100 dark:border-slate-800/60">
+              <span>API Request Policy</span>
+              <span class="font-semibold text-slate-900 dark:text-white">100,000 / month (Auto-reset)</span>
+            </div>
+            <div class="flex items-center justify-between py-1">
+              <span>Embed Direct URLs</span>
+              <span class="font-semibold text-emerald-500">Universal Direct Stream</span>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div class="pitch-card p-6 rounded-2xl border border-slate-200 dark:border-[#1b1b22]">
-        <h3 class="text-sm font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-          <i data-lucide="clock" class="w-4 h-4 text-sky-600 dark:text-sky-400"></i> Recent Login Activity
-        </h3>
-        <div id="dash-recent-logins" class="text-xs text-slate-600 dark:text-neutral-400">Loading recent logins...</div>
-      </div>
       <div id="dash-contact-details" class="grid md:grid-cols-2 gap-4"></div>
     </div>
   `;
@@ -2793,7 +2951,7 @@ async function renderDashboardTab(container) {
 
   try {
     const profile = await apiRequest('/auth/profile');
-    const links = await apiRequest('/share/my-links');
+    const links = await apiRequest('/share/my-links').catch(() => []);
 
     const used = profile.user.usedStorageBytes || 0;
     const total = profile.user.storage_quota_bytes || 10737418240;
@@ -2801,20 +2959,45 @@ async function renderDashboardTab(container) {
 
     document.getElementById('dash-storage-text').innerText = `${formatBytes(used)} / ${formatBytes(total)}`;
     document.getElementById('dash-storage-bar').style.width = `${pct}%`;
-    document.getElementById('dash-share-count').innerText = `${links.filter(l => l.is_active && !l.isExpired).length} / 3 Active`;
-    document.getElementById('dash-ip-text').innerText = profile.currentIp.ipV4;
+    
+    if (profile.currentIp && profile.currentIp.ipV4) {
+      document.getElementById('dash-ip-badge').innerText = `IP: ${profile.currentIp.ipV4}`;
+    }
+
+    // Set bandwidth & api requests data
+    const usage = profile.usage || profile.user?.usage;
+    if (usage) {
+      if (usage.bandwidth) {
+        document.getElementById('dash-bandwidth-text').innerText = `${usage.bandwidth.formattedUsed} / ${usage.bandwidth.formattedLimit}`;
+        document.getElementById('dash-bandwidth-bar').style.width = `${Math.min(100, usage.bandwidth.percentUsed)}%`;
+        if (usage.bandwidth.isExceeded) {
+          document.getElementById('dash-bandwidth-text').classList.add('text-red-400');
+        }
+      }
+      if (usage.apiRequests) {
+        document.getElementById('dash-api-text').innerText = `${usage.apiRequests.formattedUsed} / ${usage.apiRequests.formattedLimit}`;
+        document.getElementById('dash-api-bar').style.width = `${Math.min(100, usage.apiRequests.percentUsed)}%`;
+        document.getElementById('dash-api-percent').innerText = `${usage.apiRequests.percentUsed}% used`;
+        if (usage.apiRequests.isExceeded) {
+          document.getElementById('dash-api-text').classList.add('text-red-400');
+        }
+      }
+      if (usage.daysUntilReset !== undefined) {
+        document.getElementById('dash-bandwidth-reset').innerText = `Resets in ${usage.daysUntilReset}d`;
+      }
+    }
 
     const loginDiv = document.getElementById('dash-recent-logins');
     if (loginDiv) {
       loginDiv.innerHTML = `
         <div class="divide-y divide-slate-800/60">
-          ${profile.recentActivity.map(a => `
+          ${(profile.recentActivity || []).map(a => `
             <div class="py-2.5 flex items-center justify-between">
               <span class="font-mono text-slate-200">${a.ip_v4} ${a.ip_v6 ? `(${a.ip_v6})` : ''}</span>
               <span class="text-slate-500 truncate max-w-[200px]">${escapeHtml(a.user_agent)}</span>
               <span class="text-slate-400">${new Date(a.timestamp).toLocaleString()}</span>
             </div>
-          `).join('')}
+          `).join('') || '<div class="text-slate-500 py-2">No recent login records.</div>'}
         </div>
       `;
     }
@@ -2835,10 +3018,61 @@ async function renderDashboardTab(container) {
 }
 
 async function renderProfileTab(container) {
+  let usage = null;
+  try {
+    const profile = await apiRequest('/auth/profile');
+    usage = profile.usage;
+  } catch (err) {}
+
+  const bwLimit = usage?.bandwidth?.formattedLimit || '15.00 GB';
+  const bwUsed = usage?.bandwidth?.formattedUsed || '0 Bytes';
+  const bwPct = usage?.bandwidth?.percentUsed || 0;
+  const apiLimit = usage?.apiRequests?.formattedLimit || '100,000';
+  const apiUsed = usage?.apiRequests?.formattedUsed || '0';
+  const apiPct = usage?.apiRequests?.percentUsed || 0;
+  const resetDays = usage?.daysUntilReset !== undefined ? `${usage.daysUntilReset} days` : '30 days';
+
   container.innerHTML = `
     <div class="max-w-2xl mx-auto space-y-6">
+      <!-- Monthly Usage & Limits Card -->
       <div class="glass-card p-6 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
-        <h3 class="text-lg font-bold text-slate-900 dark:text-white border-b border-slate-200 dark:border-slate-800 pb-3">User Profile Information</h3>
+        <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+          <div>
+            <h3 class="text-base font-bold text-slate-900 dark:text-white">Monthly Bandwidth & API Quota</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Limits automatically reset on a 30-day rolling monthly cycle.</p>
+          </div>
+          <span class="px-2.5 py-1 text-xs font-semibold rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20">
+            Cycle reset in ${resetDays}
+          </span>
+        </div>
+
+        <div class="grid sm:grid-cols-2 gap-4 pt-1">
+          <div class="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 space-y-2">
+            <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+              <span class="font-semibold text-slate-700 dark:text-slate-300">Monthly Bandwidth</span>
+              <span>${bwPct}%</span>
+            </div>
+            <div class="text-base font-bold text-slate-900 dark:text-white">${bwUsed} <span class="text-xs font-normal text-slate-500">/ ${bwLimit}</span></div>
+            <div class="w-full bg-slate-200 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
+              <div class="bg-gradient-to-r from-indigo-500 to-purple-500 h-full rounded-full" style="width: ${Math.min(100, bwPct)}%"></div>
+            </div>
+          </div>
+
+          <div class="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 space-y-2">
+            <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+              <span class="font-semibold text-slate-700 dark:text-slate-300">Monthly API Requests</span>
+              <span>${apiPct}%</span>
+            </div>
+            <div class="text-base font-bold text-slate-900 dark:text-white">${apiUsed} <span class="text-xs font-normal text-slate-500">/ ${apiLimit}</span></div>
+            <div class="w-full bg-slate-200 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
+              <div class="bg-gradient-to-r from-amber-500 to-yellow-400 h-full rounded-full" style="width: ${Math.min(100, apiPct)}%"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="glass-card p-6 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+        <h3 class="text-base font-bold text-slate-900 dark:text-white border-b border-slate-200 dark:border-slate-800 pb-3">User Profile Information</h3>
         
         <form onsubmit="handleProfileUpdate(event)" class="space-y-4">
           <div>
@@ -3037,15 +3271,15 @@ async function renderAdminSubTabContent() {
       area.innerHTML = `
         <div class="space-y-4">
           <div class="flex flex-wrap items-center justify-between gap-3">
-            <div><h3 class="text-sm font-bold text-white">User Management</h3><p class="text-xs text-slate-500 mt-1">Create users, change roles, manage storage and account status.</p></div>
+            <div><h3 class="text-sm font-bold text-white">User Management</h3><p class="text-xs text-slate-500 mt-1">Manage user storage, monthly bandwidth (15 GB limit), API calls (100k limit) and accounts.</p></div>
             <button onclick="openCreateUserModal()" class="bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl flex items-center gap-2">
               <i data-lucide="user-plus" class="w-4 h-4"></i> Create New User
             </button>
           </div>
           <div class="glass-card rounded-2xl overflow-hidden border border-slate-800">
-            <div class="admin-table-scroll"><div class="min-w-[1160px]">
+            <div class="admin-table-scroll"><div class="min-w-[1300px]">
               <div class="px-4 py-3 bg-slate-950/60 flex items-center text-xs font-semibold text-slate-400">
-                <span class="w-12">ID</span><span class="flex-1">User</span><span class="w-32">Role</span><span class="w-44">Storage Quota</span><span class="w-28 text-center">Email</span><span class="w-28 text-center">Status</span><span class="w-44 text-right">Actions</span>
+                <span class="w-12">ID</span><span class="flex-1">User</span><span class="w-28">Role</span><span class="w-36">Storage</span><span class="w-36">Monthly Bandwidth</span><span class="w-32">Monthly Requests</span><span class="w-24 text-center">Status</span><span class="w-48 text-right">Actions</span>
               </div>
               <div class="divide-y divide-slate-800/60">
                 ${users.map(u => {
@@ -3053,18 +3287,20 @@ async function renderAdminSubTabContent() {
                   return `
                   <div class="px-4 py-3 flex items-center text-xs">
                     <span class="w-12 text-slate-500">#${u.id}</span>
-                    <div class="flex-1 min-w-0"><div class="font-bold text-white truncate">${escapeHtml(u.name)} (${escapeHtml(u.username)}) ${isSelf ? '<span class="text-[10px] text-amber-400">YOU</span>' : ''}</div><div class="text-slate-400 truncate">${escapeHtml(u.email)}</div></div>
-                    <div class="w-40">
-                      <select ${isSelf ? 'disabled' : ''} onchange="changeUserRole('${u.id}', this.value)" class="bg-slate-900 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-white ${isSelf ? 'opacity-50 cursor-not-allowed' : ''}">
+                    <div class="flex-1 min-w-0 pr-3"><div class="font-bold text-white truncate">${escapeHtml(u.name)} (${escapeHtml(u.username)}) ${isSelf ? '<span class="text-[10px] text-amber-400">YOU</span>' : ''}</div><div class="text-slate-400 truncate">${escapeHtml(u.email)}</div></div>
+                    <div class="w-28">
+                      <select ${isSelf ? 'disabled' : ''} onchange="changeUserRole('${u.id}', this.value)" class="bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white ${isSelf ? 'opacity-50 cursor-not-allowed' : ''}">
                         <option value="user" ${u.role === 'user' ? 'selected' : ''}>User</option>
                         <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option>
                       </select>
                     </div>
-                    <span class="w-44 ${u.isOverQuota ? 'text-red-400 font-bold' : 'text-slate-300'}">${u.isOverQuota ? 'Over used storage · ' : ''}${formatBytes(u.realUsedBytes)} / ${formatBytes(u.storage_quota_bytes)}</span>
-                    <span class="w-28 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${u.email_verified ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-300'}">${u.email_verified ? 'Verified' : 'Not Verified'}</span></span>
-                    <span class="w-28 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${u.is_suspended ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'}">${u.is_suspended ? 'Suspended' : 'Active'}</span></span>
-                    <div class="w-44 text-right flex items-center justify-end gap-1">
-                      <button onclick="openEditUserModal('${u.id}')" class="p-1.5 text-slate-400 hover:text-sky-400 rounded-lg" title="Edit User"><i data-lucide="pencil" class="w-4 h-4"></i></button>
+                    <span class="w-36 ${u.isOverQuota ? 'text-red-400 font-bold' : 'text-slate-300'}">${formatBytes(u.realUsedBytes)} / ${formatBytes(u.storage_quota_bytes)}</span>
+                    <span class="w-36 text-indigo-300">${u.bandwidthFormattedUsed} / ${u.bandwidthFormattedLimit}</span>
+                    <span class="w-32 text-amber-300">${u.apiRequestsFormattedUsed} / ${u.apiRequestsFormattedLimit}</span>
+                    <span class="w-24 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${u.is_suspended ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'}">${u.is_suspended ? 'Suspended' : 'Active'}</span></span>
+                    <div class="w-48 text-right flex items-center justify-end gap-1">
+                      <button onclick="openEditUserModal('${u.id}')" class="p-1.5 text-slate-400 hover:text-sky-400 rounded-lg" title="Edit User & Quotas"><i data-lucide="pencil" class="w-4 h-4"></i></button>
+                      <button onclick="resetUserUsagePrompt('${u.id}', '${escapeHtml(u.username)}')" class="p-1.5 text-slate-400 hover:text-emerald-400 rounded-lg" title="Reset Monthly Bandwidth & API Cycle"><i data-lucide="rotate-ccw" class="w-4 h-4"></i></button>
                       <button onclick="editUserQuotaPrompt('${u.id}', '${u.storage_quota_bytes}')" class="p-1.5 text-slate-400 hover:text-amber-400 rounded-lg" title="Edit Storage Quota"><i data-lucide="hard-drive" class="w-4 h-4"></i></button>
                       <button onclick="toggleUserSuspend('${u.id}', ${u.is_suspended})" class="p-1.5 text-slate-400 hover:text-red-400 rounded-lg" title="Suspend/Unsuspend"><i data-lucide="${u.is_suspended ? 'check-circle' : 'ban'}" class="w-4 h-4"></i></button>
                       ${!isSelf ? `<button onclick="deleteUserPrompt('${u.id}', '${escapeHtml(u.username)}')" class="p-1.5 text-slate-400 hover:text-red-500 rounded-lg" title="Delete User"><i data-lucide="trash-2" class="w-4 h-4"></i></button>` : ''}
@@ -3323,6 +3559,7 @@ function renderTerminalConsole(container) {
 
 let activeTerminalSocket = null;
 let activeTerminalInstance = null;
+let activeFitAddon = null;
 
 function initXtermTerminal() {
   const container = document.getElementById('terminal-container');
@@ -3340,50 +3577,87 @@ function initXtermTerminal() {
   }
   container.innerHTML = '';
 
-  const TermClass = window.Terminal;
+  const TermClass = window.Terminal || (window.Terminal && window.Terminal.Terminal);
   if (!TermClass) {
-    container.innerHTML = '<div class="p-4 text-xs font-mono text-red-400">Terminal library (xterm.js) is loading... Please click Reconnect in a moment.</div>';
+    container.innerHTML = '<div class="p-4 text-xs font-mono text-red-400 flex items-center gap-2"><i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Loading terminal engine... Please click Reconnect in a moment.</div>';
+    if (window.lucide) lucide.createIcons();
     return;
   }
 
   const term = new TermClass({
     cursorBlink: true,
+    cursorStyle: 'block',
     fontSize: 13,
     fontFamily: 'Menlo, Monaco, Consolas, "Courier New", monospace',
-    lineHeight: 1.2,
+    lineHeight: 1.25,
+    convertEol: true,
+    scrollback: 5000,
     theme: {
-      background: '#000000',
-      foreground: '#f8fafc',
+      background: '#040406',
+      foreground: '#f1f5f9',
       cursor: '#38bdf8',
+      cursorAccent: '#000000',
       selectionBackground: '#0284c7',
+      selectionForeground: '#ffffff',
       black: '#1e293b',
-      red: '#ef4444',
-      green: '#10b981',
-      yellow: '#f59e0b',
-      blue: '#0ea5e9',
-      magenta: '#d946ef',
-      cyan: '#06b6d4',
-      white: '#f8fafc'
+      red: '#f87171',
+      green: '#34d399',
+      yellow: '#fbbf24',
+      blue: '#38bdf8',
+      magenta: '#e879f9',
+      cyan: '#22d3ee',
+      white: '#f8fafc',
+      brightBlack: '#475569',
+      brightRed: '#ef4444',
+      brightGreen: '#10b981',
+      brightYellow: '#f59e0b',
+      brightBlue: '#0ea5e9',
+      brightMagenta: '#d946ef',
+      brightCyan: '#06b6d4',
+      brightWhite: '#ffffff'
     }
   });
 
   activeTerminalInstance = term;
 
   let fitAddon = null;
-  if (typeof FitAddon !== 'undefined' && FitAddon.FitAddon) {
-    fitAddon = new FitAddon.FitAddon();
-  } else if (typeof window.FitAddon !== 'undefined') {
-    fitAddon = typeof window.FitAddon === 'function' ? new window.FitAddon() : new window.FitAddon.FitAddon();
+  try {
+    if (typeof FitAddon !== 'undefined' && FitAddon.FitAddon) {
+      fitAddon = new FitAddon.FitAddon();
+    } else if (typeof window.FitAddon !== 'undefined') {
+      fitAddon = typeof window.FitAddon === 'function' ? new window.FitAddon() : new window.FitAddon.FitAddon();
+    }
+  } catch (e) {
+    console.warn('FitAddon initialization fallback:', e);
   }
+
+  activeFitAddon = fitAddon;
 
   if (fitAddon) {
     term.loadAddon(fitAddon);
   }
 
   term.open(container);
-  if (fitAddon) {
-    try { fitAddon.fit(); } catch (e) {}
-  }
+
+  const applyFit = () => {
+    if (fitAddon && container.offsetWidth > 0) {
+      try {
+        fitAddon.fit();
+        if (activeTerminalSocket && activeTerminalSocket.readyState === WebSocket.OPEN && term.cols && term.rows) {
+          activeTerminalSocket.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+        }
+      } catch (e) {}
+    }
+  };
+
+  requestAnimationFrame(() => {
+    applyFit();
+    setTimeout(applyFit, 150);
+  });
+
+  container.addEventListener('click', () => {
+    term.focus();
+  });
 
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const wsUrl = `${protocol}//${window.location.host}/api/admin/console?token=${encodeURIComponent(AppState.token || '')}`;
@@ -3402,11 +3676,22 @@ function initXtermTerminal() {
         badge.className = 'text-xs text-emerald-500 font-mono flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20';
         badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-500"></span> Live SSH Connected';
       }
+      applyFit();
       term.focus();
     };
 
     ws.onmessage = (event) => {
-      term.write(event.data);
+      if (typeof event.data === 'string') {
+        term.write(event.data);
+      } else if (event.data instanceof Blob) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          term.write(new Uint8Array(reader.result));
+        };
+        reader.readAsArrayBuffer(event.data);
+      } else if (event.data instanceof ArrayBuffer) {
+        term.write(new Uint8Array(event.data));
+      }
     };
 
     ws.onerror = () => {
@@ -3414,7 +3699,7 @@ function initXtermTerminal() {
         badge.className = 'text-xs text-red-500 font-mono flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-500/10 border border-red-500/20';
         badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-red-500"></span> Disconnected';
       }
-      term.write('\r\n\x1b[31m[WebSocket Connection Error: Check server status or token]\x1b[0m\r\n');
+      term.write('\r\n\x1b[31m[WebSocket Error: Unable to establish live terminal connection]\x1b[0m\r\n');
     };
 
     ws.onclose = () => {
@@ -3430,18 +3715,19 @@ function initXtermTerminal() {
       }
     });
 
-    const resizeHandler = () => {
-      if (fitAddon) {
-        try { fitAddon.fit(); } catch (e) {}
+    term.onResize(({ cols, rows }) => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'resize', cols, rows }));
       }
-    };
-    window.addEventListener('resize', resizeHandler);
+    });
+
+    window.addEventListener('resize', applyFit);
   } catch (err) {
     if (badge) {
       badge.className = 'text-xs text-red-500 font-mono flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-500/10 border border-red-500/20';
       badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-red-500"></span> Error';
     }
-    term.write(`\r\n\x1b[31mFailed to open WebSocket: ${err.message}\x1b[0m\r\n`);
+    term.write(`\r\n\x1b[31mFailed to initialize WebSocket: ${err.message}\x1b[0m\r\n`);
   }
 }
 
@@ -3465,7 +3751,11 @@ function openCreateUserModal() {
           <div><label class="block text-xs text-slate-400 mb-1">Password</label><input id="create-user-password" type="password" minlength="6" required class="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-sm text-white"></div>
           <div><label class="block text-xs text-slate-400 mb-1">Role</label><select id="create-user-role" class="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-sm text-white"><option value="user">User</option><option value="admin">Admin</option></select></div>
         </div>
-        <div><label class="block text-xs text-slate-400 mb-1">Storage Quota (GB)</label><input id="create-user-quota" type="number" min="0.01" step="0.01" value="10" required class="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-sm text-white"></div>
+        <div class="grid sm:grid-cols-3 gap-3">
+          <div><label class="block text-xs text-slate-400 mb-1">Storage (GB)</label><input id="create-user-quota" type="number" min="0.01" step="0.01" value="10" required class="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-sm text-white"></div>
+          <div><label class="block text-xs text-slate-400 mb-1">Bandwidth (GB/mo)</label><input id="create-user-bw" type="number" min="1" step="1" value="15" required class="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-sm text-white"></div>
+          <div><label class="block text-xs text-slate-400 mb-1">API Calls (/mo)</label><input id="create-user-api" type="number" min="1000" step="1000" value="100000" required class="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-sm text-white"></div>
+        </div>
         <div class="flex justify-end gap-2 pt-3"><button type="button" onclick="document.getElementById('create-user-modal')?.remove()" class="px-4 py-2.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-bold">Cancel</button><button type="submit" class="px-4 py-2.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold">Create User</button></div>
       </form>
     </div>`;
@@ -3476,6 +3766,8 @@ function openCreateUserModal() {
 async function handleCreateUser(e) {
   e.preventDefault();
   const quotaGb = parseFloat(document.getElementById('create-user-quota')?.value || '0');
+  const bwGb = parseFloat(document.getElementById('create-user-bw')?.value || '15');
+  const apiReqs = parseInt(document.getElementById('create-user-api')?.value || '100000', 10);
   if (!(quotaGb > 0)) return showToast('Storage quota must be greater than 0.', 'error');
   try {
     await apiRequest('/admin/users', {
@@ -3486,7 +3778,9 @@ async function handleCreateUser(e) {
         email: document.getElementById('create-user-email').value.trim(),
         password: document.getElementById('create-user-password').value,
         role: document.getElementById('create-user-role').value,
-        storageQuotaBytes: Math.round(quotaGb * 1073741824)
+        storageQuotaBytes: Math.round(quotaGb * 1073741824),
+        bandwidthLimitBytes: Math.round(bwGb * 1073741824),
+        apiRequestsLimit: apiReqs
       }
     });
     document.getElementById('create-user-modal')?.remove();
@@ -3503,17 +3797,24 @@ function openEditUserModal(userId) {
 
   document.getElementById('edit-user-modal')?.remove();
   const isSelf = AppState.user && Number(AppState.user.id) === Number(user.id);
+  const bwGb = ((Number(user.bandwidth_limit_bytes) || 16106127360) / 1073741824).toFixed(1);
+  const apiLimit = Number(user.api_requests_limit) || 100000;
+  
   const modal = document.createElement('div');
   modal.id = 'edit-user-modal';
   modal.className = 'fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4';
   modal.innerHTML = `
     <div class="w-full max-w-lg glass-card rounded-2xl border border-slate-700 shadow-2xl p-6 max-h-[90vh] overflow-y-auto">
-      <div class="flex items-center justify-between mb-5"><div><h3 class="text-base font-bold text-white">Edit User</h3><p class="text-xs text-slate-500 mt-1">Update name, username, email, password, role and storage.</p></div><button type="button" onclick="document.getElementById('edit-user-modal')?.remove()" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button></div>
+      <div class="flex items-center justify-between mb-5"><div><h3 class="text-base font-bold text-white">Edit User & Quotas</h3><p class="text-xs text-slate-500 mt-1">Update profile, quotas, bandwidth and API request limits.</p></div><button type="button" onclick="document.getElementById('edit-user-modal')?.remove()" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button></div>
       <form onsubmit="handleEditUser(event, ${Number(user.id)})" class="space-y-3">
         <div class="grid sm:grid-cols-2 gap-3"><div><label class="block text-xs text-slate-400 mb-1">Full Name</label><input id="edit-user-name" value="${escapeHtml(user.name)}" required class="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-sm text-white"></div><div><label class="block text-xs text-slate-400 mb-1">Username</label><input id="edit-user-username" value="${escapeHtml(user.username)}" required class="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-sm text-white"></div></div>
         <div><label class="block text-xs text-slate-400 mb-1">Email</label><input id="edit-user-email" type="email" value="${escapeHtml(user.email)}" required class="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-sm text-white"></div>
         <div class="grid sm:grid-cols-2 gap-3"><div><label class="block text-xs text-slate-400 mb-1">New Password</label><input id="edit-user-password" type="password" minlength="6" placeholder="Leave blank to keep current" class="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-sm text-white"></div><div><label class="block text-xs text-slate-400 mb-1">Role</label><select id="edit-user-role" ${isSelf ? 'disabled' : ''} class="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-sm text-white"><option value="user" ${user.role === 'user' ? 'selected' : ''}>User</option><option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Admin</option></select></div></div>
-        <div><label class="block text-xs text-slate-400 mb-1">Storage Quota (GB)</label><input id="edit-user-quota" type="number" min="0.01" step="0.01" value="${(Number(user.storage_quota_bytes || 0) / 1073741824).toFixed(2)}" required class="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-sm text-white"></div>
+        <div class="grid sm:grid-cols-3 gap-3">
+          <div><label class="block text-xs text-slate-400 mb-1">Storage (GB)</label><input id="edit-user-quota" type="number" min="0.01" step="0.01" value="${(Number(user.storage_quota_bytes || 0) / 1073741824).toFixed(2)}" required class="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-sm text-white"></div>
+          <div><label class="block text-xs text-slate-400 mb-1">Bandwidth (GB/mo)</label><input id="edit-user-bw" type="number" min="1" step="0.5" value="${bwGb}" required class="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-sm text-white"></div>
+          <div><label class="block text-xs text-slate-400 mb-1">API Calls (/mo)</label><input id="edit-user-api" type="number" min="1000" step="1000" value="${apiLimit}" required class="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-sm text-white"></div>
+        </div>
         <div class="flex justify-end gap-2 pt-3"><button type="button" onclick="document.getElementById('edit-user-modal')?.remove()" class="px-4 py-2.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-bold">Cancel</button><button type="submit" class="px-4 py-2.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold">Save Changes</button></div>
       </form>
     </div>`;
@@ -3524,6 +3825,8 @@ function openEditUserModal(userId) {
 async function handleEditUser(e, userId) {
   e.preventDefault();
   const quotaGb = parseFloat(document.getElementById('edit-user-quota')?.value || '0');
+  const bwGb = parseFloat(document.getElementById('edit-user-bw')?.value || '15');
+  const apiReqs = parseInt(document.getElementById('edit-user-api')?.value || '100000', 10);
   if (!(quotaGb > 0)) return showToast('Storage quota must be greater than 0.', 'error');
 
   const password = document.getElementById('edit-user-password').value;
@@ -3531,7 +3834,9 @@ async function handleEditUser(e, userId) {
     name: document.getElementById('edit-user-name').value.trim(),
     username: document.getElementById('edit-user-username').value.trim(),
     email: document.getElementById('edit-user-email').value.trim(),
-    storageQuotaBytes: Math.round(quotaGb * 1073741824)
+    storageQuotaBytes: Math.round(quotaGb * 1073741824),
+    bandwidthLimitBytes: Math.round(bwGb * 1073741824),
+    apiRequestsLimit: apiReqs
   };
   if (AppState.user && Number(AppState.user.id) !== Number(userId)) body.role = document.getElementById('edit-user-role').value;
   if (password) body.newPassword = password;
@@ -3540,6 +3845,17 @@ async function handleEditUser(e, userId) {
     await apiRequest(`/admin/users/${userId}`, { method: 'PUT', body });
     document.getElementById('edit-user-modal')?.remove();
     showToast('User updated successfully.', 'success');
+    await renderAdminSubTabContent();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function resetUserUsagePrompt(userId, username) {
+  if (!confirm(`Reset monthly bandwidth and API request usage cycle for @${username}?`)) return;
+  try {
+    await apiRequest(`/admin/users/${userId}/reset-usage`, { method: 'POST' });
+    showToast(`Monthly usage for @${username} has been reset.`, 'success');
     await renderAdminSubTabContent();
   } catch (err) {
     showToast(err.message, 'error');

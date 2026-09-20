@@ -7,6 +7,7 @@ const cors = require('cors');
 const { WebSocketServer } = require('ws');
 
 const { initDatabase } = require('./src/database/db');
+const { initUsageAutoResetJob } = require('./src/services/usageService');
 const authRoutes = require('./src/routes/authRoutes');
 const fileRoutes = require('./src/routes/fileRoutes');
 const shareRoutes = require('./src/routes/shareRoutes');
@@ -113,12 +114,17 @@ app.get('/api/health', (req, res) => {
 
 // Handle WebSocket upgrade for Admin VPS Console
 server.on('upgrade', (request, socket, head) => {
-  const pathname = new URL(request.url, `http://${request.headers.host}`).pathname;
-  if (pathname === '/api/admin/console') {
-    wss.handleUpgrade(request, socket, head, (ws) => {
-      wss.emit('connection', ws, request);
-    });
-  } else {
+  try {
+    const host = request.headers.host || 'localhost';
+    const pathname = new URL(request.url, `http://${host}`).pathname.replace(/\/$/, '');
+    if (pathname === '/api/admin/console') {
+      wss.handleUpgrade(request, socket, head, (ws) => {
+        wss.emit('connection', ws, request);
+      });
+    } else {
+      socket.destroy();
+    }
+  } catch (e) {
     socket.destroy();
   }
 });
@@ -137,6 +143,7 @@ app.use((req, res, next) => {
 // Start server after DB initialization
 initDatabase()
   .then(() => {
+    initUsageAutoResetJob();
     server.listen(PORT, HOST, () => {
       console.log(`===================================================`);
       console.log(`  VPS SFTP Cloud & S3 Cluster running on ${HOST}:${PORT}`);

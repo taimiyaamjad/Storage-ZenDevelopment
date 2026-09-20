@@ -7,6 +7,7 @@ const { getRow, getAll, runQuery } = require('../database/db');
 const { getClientIpDetails, logAudit, requireAuth, JWT_SECRET } = require('../middleware/auth');
 const EmailService = require('../services/emailService');
 const SFTPService = require('../services/sftpService');
+const { getUserUsageSummary, DEFAULT_MONTHLY_BANDWIDTH_BYTES, DEFAULT_MONTHLY_API_REQUESTS } = require('../services/usageService');
 
 async function sendAccountVerificationEmail(userId, name, email) {
   const token = crypto.randomBytes(32).toString('hex');
@@ -59,10 +60,17 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'Unable to determine your client IP address. Please try again.' });
     }
 
-    // Get Default storage quota setting
+    // Get Default storage quota & monthly limits settings
     const defaultQuotaSetting = await getRow(`SELECT value FROM app_settings WHERE key = 'default_storage_quota_bytes';`);
     const defaultQuotaBytes = defaultQuotaSetting ? parseInt(defaultQuotaSetting.value, 10) : 10737418240; // 10 GB
 
+    const defaultBandwidthSetting = await getRow(`SELECT value FROM app_settings WHERE key = 'default_monthly_bandwidth_bytes';`);
+    const defaultBandwidthBytes = defaultBandwidthSetting ? parseInt(defaultBandwidthSetting.value, 10) : DEFAULT_MONTHLY_BANDWIDTH_BYTES; // 15 GB
+
+    const defaultApiRequestsSetting = await getRow(`SELECT value FROM app_settings WHERE key = 'default_monthly_api_requests';`);
+    const defaultApiRequests = defaultApiRequestsSetting ? parseInt(defaultApiRequestsSetting.value, 10) : DEFAULT_MONTHLY_API_REQUESTS; // 100k requests
+
+    const resetDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
     const hash = await bcrypt.hash(password, 10);
 
     // Registration and the one-IP lock are performed atomically. The unique
@@ -83,9 +91,9 @@ router.post('/register', async (req, res) => {
       }
 
       const result = await runQuery(
-        `INSERT INTO users (name, username, email, password_hash, role, storage_quota_bytes)
-         VALUES (?, ?, ?, ?, 'user', ?);`,
-        [name, username.toLowerCase(), email.toLowerCase(), hash, defaultQuotaBytes]
+        `INSERT INTO users (name, username, email, password_hash, role, storage_quota_bytes, monthly_bandwidth_limit_bytes, monthly_api_requests_limit, bandwidth_cycle_reset_at)
+         VALUES (?, ?, ?, ?, 'user', ?, ?, ?, ?);`,
+        [name, username.toLowerCase(), email.toLowerCase(), hash, defaultQuotaBytes, defaultBandwidthBytes, defaultApiRequests, resetDate]
       );
       newUserId = result.lastID;
 
@@ -250,22 +258,38 @@ router.get('/profile', requireAuth, async (req, res) => {
       [req.user.id]
     );
 
+    const usageSummary = await getUserUsageSummary(req.user.id);
+
     return res.json({
       user: {
         ...req.user,
         usedStorageBytes: usedBytes,
         emailVerified: !!req.user.email_verified,
         storageOverageSince: usedBytes > Number(req.user.storage_quota_bytes || 0) ? (req.user.storage_overage_since || null) : null,
-        isStorageOverQuota: usedBytes > Number(req.user.storage_quota_bytes || 0)
+        isStorageOverQuota: usedBytes > Number(req.user.storage_quota_bytes || 0),
+        usage: usageSummary
       },
       currentIp: {
         ipV4,
         ipV6: ipV6 || 'N/A'
       },
+      usage: usageSummary,
       recentActivity
     });
   } catch (err) {
     return res.status(500).json({ error: 'Failed to retrieve profile.' });
+  }
+});
+
+/**
+ * 3b. Dedicated User Usage & Limits endpoint
+ */
+router.get('/usage', requireAuth, async (req, res) => {
+  try {
+    const summary = await getUserUsageSummary(req.user.id);
+    return res.json(summary);
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to get usage stats.' });
   }
 });
 

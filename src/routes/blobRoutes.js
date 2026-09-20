@@ -5,14 +5,31 @@ const fs = require('fs');
 const crypto = require('crypto');
 const mime = require('mime-types');
 const multer = require('multer');
+const jwt = require('jsonwebtoken');
+const { JWT_SECRET } = require('../middleware/auth');
 const SFTPService = require('../services/sftpService');
 const { requireApiKeyOrSession, requirePermission } = require('../middleware/apiKeyAuth');
 const { runQuery, getRow } = require('../database/db');
+const { checkBandwidthQuota, recordBandwidthUsage, recordApiRequest } = require('../services/usageService');
 
 // Multer for multipart blob upload endpoint
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 1024 * 1024 * 500 } // 500 MB
+});
+
+// Global CORS & direct cross-origin embedding headers for all blob endpoints
+router.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, PUT, POST, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', '*');
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.setHeader('Cross-Origin-Embedder-Policy', 'unsafe-none');
+  res.setHeader('Timing-Allow-Origin', '*');
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+  next();
 });
 
 function getBaseUrl(req) {
@@ -47,6 +64,10 @@ async function syncUsedStorage(userId) {
  */
 function resolveBlobPath(userId, rawPathname) {
   let cleaned = String(rawPathname || '').replace(/\\/g, '/').replace(/^\/+/, '');
+  try {
+    cleaned = decodeURIComponent(cleaned);
+  } catch (_) {}
+  cleaned = cleaned.replace(/\\/g, '/').replace(/^\/+/, '');
   if (!cleaned) cleaned = 'blob_' + Date.now();
   // Safe relative path inside user's storage
   const relPath = path.join('/s3_storage', cleaned).replace(/\\/g, '/');
@@ -56,6 +77,54 @@ function resolveBlobPath(userId, rawPathname) {
     relativePath: relPath,
     absolutePath: resolved.absolutePath
   };
+}
+
+/**
+ * Helper to locate blob file across user directory or global storage for public embed links
+ */
+function findBlobFile(userId, rawPathname) {
+  let cleaned = String(rawPathname || '').replace(/\\/g, '/').replace(/^(\/?(download|view|raw)\/)+/i, '').replace(/^\/+/, '');
+  try {
+    cleaned = decodeURIComponent(cleaned);
+  } catch (_) {}
+  const safeRelPath = path.normalize(cleaned).replace(/^(\.\.[\/\\])+/, '').replace(/\\/g, '/');
+  const storageRoot = SFTPService.STORAGE_ROOT || process.env.STORAGE_ROOT || '/tmp/vps_sftp_storage';
+
+  // 1. If userId is provided, check user's s3_storage and root
+  if (userId) {
+    const userS3 = path.join(storageRoot, `user_${userId}`, 's3_storage', safeRelPath);
+    if (fs.existsSync(userS3) && fs.statSync(userS3).isFile()) return { targetFile: userS3, ownerId: userId };
+
+    const userRoot = path.join(storageRoot, `user_${userId}`, safeRelPath);
+    if (fs.existsSync(userRoot) && fs.statSync(userRoot).isFile()) return { targetFile: userRoot, ownerId: userId };
+  }
+
+  // 2. Fallback: Search across all users in storage root (enables public embedding of direct links anywhere)
+  if (fs.existsSync(storageRoot)) {
+    const userDirs = fs.readdirSync(storageRoot);
+    for (const uDir of userDirs) {
+      const uDirPath = path.join(storageRoot, uDir);
+      try {
+        if (!fs.statSync(uDirPath).isDirectory()) continue;
+        const match = uDir.match(/^user_(\d+)$/);
+        const ownerId = match ? parseInt(match[1], 10) : null;
+
+        // Check in s3_storage
+        const checkS3 = path.join(uDirPath, 's3_storage', safeRelPath);
+        if (fs.existsSync(checkS3) && fs.statSync(checkS3).isFile()) {
+          return { targetFile: checkS3, ownerId };
+        }
+
+        // Check in root user directory
+        const checkBase = path.join(uDirPath, safeRelPath);
+        if (fs.existsSync(checkBase) && fs.statSync(checkBase).isFile()) {
+          return { targetFile: checkBase, ownerId };
+        }
+      } catch (_) {}
+    }
+  }
+
+  return { targetFile: null, ownerId: null };
 }
 
 /**
@@ -98,10 +167,11 @@ router.put('/*pathname', requireApiKeyOrSession, requirePermission('write'), asy
         const contentType = req.headers['content-type'] || mime.lookup(pathname) || 'application/octet-stream';
         const baseUrl = getBaseUrl(req);
         const fileName = path.basename(pathname);
+        const encodedPath = encodeURIComponent(pathname).replace(/%2F/g, '/');
 
         return res.status(200).json({
-          url: `${baseUrl}/api/v1/blob/download/${encodeURIComponent(pathname).replace(/%2F/g, '/')}`,
-          downloadUrl: `${baseUrl}/api/v1/blob/download/${encodeURIComponent(pathname).replace(/%2F/g, '/')}?download=1`,
+          url: `${baseUrl}/api/v1/blob/${encodedPath}`,
+          downloadUrl: `${baseUrl}/api/v1/blob/${encodedPath}?download=1`,
           pathname: pathname,
           contentType: contentType,
           contentDisposition: `inline; filename="${fileName}"`,
@@ -173,10 +243,11 @@ router.post('/upload', requireApiKeyOrSession, requirePermission('write'), uploa
     const contentType = req.headers['content-type'] || mime.lookup(pathname) || 'application/octet-stream';
     const baseUrl = getBaseUrl(req);
     const fileName = path.basename(pathname);
+    const encodedPath = encodeURIComponent(pathname).replace(/%2F/g, '/');
 
     return res.status(200).json({
-      url: `${baseUrl}/api/v1/blob/download/${encodeURIComponent(pathname).replace(/%2F/g, '/')}`,
-      downloadUrl: `${baseUrl}/api/v1/blob/download/${encodeURIComponent(pathname).replace(/%2F/g, '/')}?download=1`,
+      url: `${baseUrl}/api/v1/blob/${encodedPath}`,
+      downloadUrl: `${baseUrl}/api/v1/blob/${encodedPath}?download=1`,
       pathname: pathname,
       contentType: contentType,
       contentDisposition: `inline; filename="${fileName}"`,
@@ -216,9 +287,10 @@ router.get('/list', requireApiKeyOrSession, requirePermission('read'), async (re
         } else if (entry.isFile()) {
           if (!prefix || rel.startsWith(prefix)) {
             const stat = fs.statSync(full);
+            const encodedRel = encodeURIComponent(rel).replace(/%2F/g, '/');
             blobs.push({
-              url: `${baseUrl}/api/v1/blob/download/${encodeURIComponent(rel).replace(/%2F/g, '/')}`,
-              downloadUrl: `${baseUrl}/api/v1/blob/download/${encodeURIComponent(rel).replace(/%2F/g, '/')}?download=1`,
+              url: `${baseUrl}/api/v1/blob/${encodedRel}`,
+              downloadUrl: `${baseUrl}/api/v1/blob/${encodedRel}?download=1`,
               pathname: rel,
               size: stat.size,
               uploadedAt: stat.mtime.toISOString(),
@@ -242,12 +314,12 @@ router.get('/list', requireApiKeyOrSession, requirePermission('read'), async (re
 });
 
 /**
- * 4. GET /api/v1/blob/download/*pathname and GET /api/v1/blob/*pathname
- * Stream blob with HTTP Range support for media seeking & downloads
+ * 4. GET /api/v1/blob/*pathname and aliases (/download/*, /view/*, /raw/*)
+ * Direct embeddable streaming with HTTP Range, CORS, inline display & ?download=1 attachment
  */
-router.get(['/download/*pathname', '/*pathname'], async (req, res) => {
+router.get(['/download/*pathname', '/view/*pathname', '/raw/*pathname', '/*pathname'], async (req, res) => {
   try {
-    const rawPathname = Array.isArray(req.params.pathname) ? req.params.pathname.join('/') : (req.params.pathname || '');
+    let rawPathname = Array.isArray(req.params.pathname) ? req.params.pathname.join('/') : (req.params.pathname || '');
     if (!rawPathname) return res.status(400).json({ error: 'Missing pathname.' });
 
     // Try finding blob across user storage or check auth
@@ -272,28 +344,7 @@ router.get(['/download/*pathname', '/*pathname'], async (req, res) => {
       }
     }
 
-    let targetFile = null;
-    if (userId) {
-      const resolved = resolveBlobPath(userId, rawPathname);
-      if (fs.existsSync(resolved.absolutePath) && fs.statSync(resolved.absolutePath).isFile()) {
-        targetFile = resolved.absolutePath;
-      }
-    }
-
-    // Fallback: search across all users in SFTP storage root
-    if (!targetFile) {
-      const storageRoot = SFTPService.STORAGE_ROOT || process.env.STORAGE_ROOT || '/var/vps_storage';
-      if (fs.existsSync(storageRoot)) {
-        const userDirs = fs.readdirSync(storageRoot);
-        for (const uDir of userDirs) {
-          const check = path.join(storageRoot, uDir, 's3_storage', rawPathname);
-          if (fs.existsSync(check) && fs.statSync(check).isFile()) {
-            targetFile = check;
-            break;
-          }
-        }
-      }
-    }
+    const { targetFile, ownerId } = findBlobFile(userId, rawPathname);
 
     if (!targetFile || !fs.existsSync(targetFile)) {
       return res.status(404).json({ error: 'Blob not found.' });
@@ -304,12 +355,39 @@ router.get(['/download/*pathname', '/*pathname'], async (req, res) => {
       return res.status(400).json({ error: 'Path is a directory, not a blob file.' });
     }
 
+    // Check bandwidth quota for the blob owner
+    if (ownerId) {
+      try {
+        await checkBandwidthQuota(ownerId, stat.size);
+      } catch (bwErr) {
+        if (bwErr.status === 429) {
+          return res.status(429).json({ error: bwErr.message, code: bwErr.code });
+        }
+      }
+    }
+
     const contentType = mime.lookup(targetFile) || 'application/octet-stream';
     const fileName = path.basename(targetFile);
-    const isDownload = req.query.download === '1' || req.path.includes('/download/');
+    const isDownload = req.query.download === '1' || req.query.download === 'true';
     const disposition = isDownload ? `attachment; filename="${fileName}"` : `inline; filename="${fileName}"`;
 
-    // Handle HTTP Range header
+    // Standard headers for direct cross-origin website embedding
+    const standardHeaders = {
+      'Content-Type': contentType,
+      'Content-Disposition': disposition,
+      'Accept-Ranges': 'bytes',
+      'Cache-Control': 'public, max-age=31536000, immutable',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+      'Access-Control-Allow-Headers': '*',
+      'Cross-Origin-Resource-Policy': 'cross-origin',
+      'Cross-Origin-Embedder-Policy': 'unsafe-none',
+      'Timing-Allow-Origin': '*',
+      'ETag': `"${stat.size}-${stat.mtimeMs}"`,
+      'Last-Modified': stat.mtime.toUTCString()
+    };
+
+    // Handle HTTP Range header (for video/audio seeking and chunked streaming)
     const range = req.headers.range;
     if (range) {
       const parts = range.replace(/bytes=/, '').split('-');
@@ -318,27 +396,39 @@ router.get(['/download/*pathname', '/*pathname'], async (req, res) => {
       const chunksize = end - start + 1;
 
       res.writeHead(206, {
+        ...standardHeaders,
         'Content-Range': `bytes ${start}-${end}/${stat.size}`,
-        'Accept-Ranges': 'bytes',
-        'Content-Length': chunksize,
-        'Content-Type': contentType,
-        'Content-Disposition': disposition,
-        'Cache-Control': 'public, max-age=31536000, immutable',
-        'ETag': `"${stat.size}-${stat.mtimeMs}"`
+        'Content-Length': chunksize
       });
 
-      fs.createReadStream(targetFile, { start, end }).pipe(res);
+      const stream = fs.createReadStream(targetFile, { start, end });
+      let transferred = 0;
+      stream.on('data', chunk => {
+        transferred += chunk.length;
+      });
+      stream.on('end', () => {
+        if (ownerId && transferred > 0) {
+          recordBandwidthUsage(ownerId, transferred).catch(() => {});
+        }
+      });
+      stream.pipe(res);
     } else {
       res.writeHead(200, {
-        'Content-Length': stat.size,
-        'Content-Type': contentType,
-        'Content-Disposition': disposition,
-        'Accept-Ranges': 'bytes',
-        'Cache-Control': 'public, max-age=31536000, immutable',
-        'ETag': `"${stat.size}-${stat.mtimeMs}"`
+        ...standardHeaders,
+        'Content-Length': stat.size
       });
 
-      fs.createReadStream(targetFile).pipe(res);
+      const stream = fs.createReadStream(targetFile);
+      let transferred = 0;
+      stream.on('data', chunk => {
+        transferred += chunk.length;
+      });
+      stream.on('end', () => {
+        if (ownerId && transferred > 0) {
+          recordBandwidthUsage(ownerId, transferred).catch(() => {});
+        }
+      });
+      stream.pipe(res);
     }
   } catch (err) {
     return res.status(500).json({ error: 'Download error: ' + err.message });
@@ -347,36 +437,32 @@ router.get(['/download/*pathname', '/*pathname'], async (req, res) => {
 
 /**
  * 5. HEAD /api/v1/blob/*pathname
- * Metadata inspection
+ * Metadata inspection with CORS
  */
-router.head('/*pathname', async (req, res) => {
+router.head(['/download/*pathname', '/view/*pathname', '/raw/*pathname', '/*pathname'], async (req, res) => {
   try {
     const rawPathname = Array.isArray(req.params.pathname) ? req.params.pathname.join('/') : (req.params.pathname || '');
-    const storageRoot = process.env.STORAGE_ROOT || '/tmp/vps_sftp_storage';
-    let targetFile = null;
-
-    if (fs.existsSync(storageRoot)) {
-      const userDirs = fs.readdirSync(storageRoot);
-      for (const uDir of userDirs) {
-        const check = path.join(storageRoot, uDir, 's3_storage', rawPathname);
-        if (fs.existsSync(check)) {
-          targetFile = check;
-          break;
-        }
-      }
-    }
+    const targetFile = findBlobFile(null, rawPathname);
 
     if (!targetFile || !fs.existsSync(targetFile)) {
       return res.status(404).end();
     }
 
     const stat = fs.statSync(targetFile);
+    const contentType = mime.lookup(targetFile) || 'application/octet-stream';
+    const fileName = path.basename(targetFile);
+    const isDownload = req.query.download === '1' || req.query.download === 'true';
+
     res.set({
       'Content-Length': stat.size,
-      'Content-Type': mime.lookup(targetFile) || 'application/octet-stream',
+      'Content-Type': contentType,
+      'Content-Disposition': isDownload ? `attachment; filename="${fileName}"` : `inline; filename="${fileName}"`,
       'ETag': `"${stat.size}-${stat.mtimeMs}"`,
       'Last-Modified': stat.mtime.toUTCString(),
-      'Accept-Ranges': 'bytes'
+      'Accept-Ranges': 'bytes',
+      'Cache-Control': 'public, max-age=31536000, immutable',
+      'Access-Control-Allow-Origin': '*',
+      'Cross-Origin-Resource-Policy': 'cross-origin'
     });
     return res.status(200).end();
   } catch (_) {
@@ -419,7 +505,7 @@ router.post('/delete', requireApiKeyOrSession, requirePermission('delete'), asyn
       try {
         if (item.startsWith('http')) {
           const u = new URL(item);
-          pathname = u.pathname.replace('/api/v1/blob/download/', '').replace('/api/v1/blob/', '');
+          pathname = u.pathname.replace('/api/v1/blob/download/', '').replace('/api/v1/blob/view/', '').replace('/api/v1/blob/raw/', '').replace('/api/v1/blob/', '');
         }
         const { absolutePath } = resolveBlobPath(req.user.id, decodeURIComponent(pathname));
         if (fs.existsSync(absolutePath)) {

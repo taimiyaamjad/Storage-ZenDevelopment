@@ -260,4 +260,6 @@ class SFTPService {
   }
 }
 
+SFTPService.STORAGE_ROOT = STORAGE_ROOT;
+
 module.exports = SFTPService;

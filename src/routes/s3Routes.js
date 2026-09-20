@@ -7,6 +7,21 @@ const mime = require('mime-types');
 const SFTPService = require('../services/sftpService');
 const { requireApiKeyOrSession, requirePermission } = require('../middleware/apiKeyAuth');
 const { runQuery, getRow } = require('../database/db');
+const { checkBandwidthQuota, recordBandwidthUsage, recordApiRequest } = require('../services/usageService');
+
+// Global CORS & direct cross-origin embedding headers for S3 endpoints
+router.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, PUT, POST, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', '*');
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.setHeader('Cross-Origin-Embedder-Policy', 'unsafe-none');
+  res.setHeader('Timing-Allow-Origin', '*');
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+  next();
+});
 
 async function checkQuota(userId, extraBytes = 0) {
   const user = await getRow(`SELECT storage_quota_bytes FROM users WHERE id = ?;`, [userId]);
@@ -263,10 +278,13 @@ router.get('/:bucket/*key', async (req, res) => {
     }
 
     let targetFile = null;
+    let fileOwnerId = userId;
+
     if (userId) {
       const resolved = resolveS3Path(userId, bucket, key);
       if (fs.existsSync(resolved.absolutePath)) {
         targetFile = resolved.absolutePath;
+        fileOwnerId = userId;
       }
     } else {
       // Look across storage
@@ -274,9 +292,11 @@ router.get('/:bucket/*key', async (req, res) => {
       if (fs.existsSync(storageRoot)) {
         const userDirs = fs.readdirSync(storageRoot);
         for (const uDir of userDirs) {
+          const match = uDir.match(/^user_(\d+)$/);
           const check = path.join(storageRoot, uDir, 's3_storage', bucket, key);
           if (fs.existsSync(check)) {
             targetFile = check;
+            fileOwnerId = match ? parseInt(match[1], 10) : null;
             break;
           }
         }
@@ -290,6 +310,17 @@ router.get('/:bucket/*key', async (req, res) => {
     const stat = fs.statSync(targetFile);
     if (stat.isDirectory()) {
       return res.status(400).json({ error: 'Key is a directory, not an object.' });
+    }
+
+    // Check bandwidth quota
+    if (fileOwnerId) {
+      try {
+        await checkBandwidthQuota(fileOwnerId, stat.size);
+      } catch (bwErr) {
+        if (bwErr.status === 429) {
+          return res.status(429).json({ error: bwErr.message, code: bwErr.code });
+        }
+      }
     }
 
     const contentType = mime.lookup(targetFile) || 'application/octet-stream';
@@ -311,7 +342,15 @@ router.get('/:bucket/*key', async (req, res) => {
         'Last-Modified': stat.mtime.toUTCString()
       });
 
-      fs.createReadStream(targetFile, { start, end }).pipe(res);
+      const stream = fs.createReadStream(targetFile, { start, end });
+      let transferred = 0;
+      stream.on('data', chunk => { transferred += chunk.length; });
+      stream.on('end', () => {
+        if (fileOwnerId && transferred > 0) {
+          recordBandwidthUsage(fileOwnerId, transferred).catch(() => {});
+        }
+      });
+      stream.pipe(res);
     } else {
       res.writeHead(200, {
         'Content-Length': stat.size,
@@ -321,7 +360,15 @@ router.get('/:bucket/*key', async (req, res) => {
         'Last-Modified': stat.mtime.toUTCString()
       });
 
-      fs.createReadStream(targetFile).pipe(res);
+      const stream = fs.createReadStream(targetFile);
+      let transferred = 0;
+      stream.on('data', chunk => { transferred += chunk.length; });
+      stream.on('end', () => {
+        if (fileOwnerId && transferred > 0) {
+          recordBandwidthUsage(fileOwnerId, transferred).catch(() => {});
+        }
+      });
+      stream.pipe(res);
     }
   } catch (err) {
     return res.status(500).json({ error: err.message });

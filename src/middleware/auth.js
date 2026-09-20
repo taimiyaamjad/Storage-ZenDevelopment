@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const net = require('net');
 const { getRow, runQuery } = require('../database/db');
+const { checkAndResetMonthlyCycle } = require('../services/usageService');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-vps-sftp-jwt-key-2026-change-me-in-prod';
 
@@ -83,7 +84,9 @@ async function requireAuth(req, res, next) {
       const decoded = jwt.verify(token, JWT_SECRET);
       if (decoded && decoded.userId) {
         user = await getRow(
-          `SELECT id, name, username, email, email_verified, role, storage_quota_bytes, used_storage_bytes, storage_overage_since, is_suspended, is_suspicious
+          `SELECT id, name, username, email, email_verified, role, storage_quota_bytes, used_storage_bytes, storage_overage_since,
+                  monthly_bandwidth_limit_bytes, used_bandwidth_bytes, monthly_api_requests_limit, used_api_requests, bandwidth_cycle_reset_at,
+                  is_suspended, is_suspicious
            FROM users WHERE id = ?;`,
           [decoded.userId]
         );
@@ -95,7 +98,9 @@ async function requireAuth(req, res, next) {
     // 2. If not a valid JWT, look up as API Key in api_keys table
     if (!user) {
       const apiKey = await getRow(
-        `SELECT ak.*, u.id as user_id, u.name as user_name, u.username, u.email, u.email_verified, u.role, u.storage_quota_bytes, u.used_storage_bytes, u.is_suspended, u.is_suspicious
+        `SELECT ak.*, u.id as user_id, u.name as user_name, u.username, u.email, u.email_verified, u.role, u.storage_quota_bytes, u.used_storage_bytes,
+                u.monthly_bandwidth_limit_bytes, u.used_bandwidth_bytes, u.monthly_api_requests_limit, u.used_api_requests, u.bandwidth_cycle_reset_at,
+                u.is_suspended, u.is_suspicious
          FROM api_keys ak
          JOIN users u ON ak.user_id = u.id
          WHERE (ak.secret_key = ? OR ak.key_id = ?) AND ak.is_active = 1;`,
@@ -118,6 +123,11 @@ async function requireAuth(req, res, next) {
           role: apiKey.role,
           storage_quota_bytes: apiKey.storage_quota_bytes,
           used_storage_bytes: apiKey.used_storage_bytes,
+          monthly_bandwidth_limit_bytes: apiKey.monthly_bandwidth_limit_bytes,
+          used_bandwidth_bytes: apiKey.used_bandwidth_bytes,
+          monthly_api_requests_limit: apiKey.monthly_api_requests_limit,
+          used_api_requests: apiKey.used_api_requests,
+          bandwidth_cycle_reset_at: apiKey.bandwidth_cycle_reset_at,
           is_suspended: apiKey.is_suspended,
           is_suspicious: apiKey.is_suspicious
         };
@@ -133,7 +143,9 @@ async function requireAuth(req, res, next) {
       return res.status(403).json({ error: 'Your account has been suspended by an administrator.' });
     }
 
-    req.user = user;
+    // Check and auto-reset monthly bandwidth/API requests cycle if 1 month has passed
+    const refreshedUser = await checkAndResetMonthlyCycle(user);
+    req.user = refreshedUser || user;
     next();
   } catch (err) {
     return res.status(401).json({ error: 'Authentication failed: ' + err.message });

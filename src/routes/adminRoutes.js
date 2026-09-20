@@ -8,6 +8,7 @@ const { getRow, getAll, runQuery } = require('../database/db');
 const { requireAuth, requireAdmin, logAudit } = require('../middleware/auth');
 const EmailService = require('../services/emailService');
 const SFTPService = require('../services/sftpService');
+const { resetUserMonthlyCycle, getUserUsageSummary, DEFAULT_MONTHLY_BANDWIDTH_BYTES, DEFAULT_MONTHLY_API_REQUESTS, formatBytes } = require('../services/usageService');
 
 async function sendAdminCreatedUserEmails(userId, name, username, email) {
   const crypto = require('crypto');
@@ -131,10 +132,24 @@ router.post('/users', async (req, res) => {
       ? Math.floor(Number(storageQuotaBytes))
       : defaultQuota;
 
+    const defaultBandwidthSetting = await getRow(`SELECT value FROM app_settings WHERE key = 'default_monthly_bandwidth_bytes';`);
+    const defaultBandwidth = defaultBandwidthSetting ? parseInt(defaultBandwidthSetting.value, 10) : DEFAULT_MONTHLY_BANDWIDTH_BYTES;
+    const bandwidthLimit = Number.isFinite(Number(req.body.monthlyBandwidthLimitBytes)) && Number(req.body.monthlyBandwidthLimitBytes) > 0
+      ? Math.floor(Number(req.body.monthlyBandwidthLimitBytes))
+      : defaultBandwidth;
+
+    const defaultApiReqSetting = await getRow(`SELECT value FROM app_settings WHERE key = 'default_monthly_api_requests';`);
+    const defaultApiReq = defaultApiReqSetting ? parseInt(defaultApiReqSetting.value, 10) : DEFAULT_MONTHLY_API_REQUESTS;
+    const apiRequestsLimit = Number.isFinite(Number(req.body.monthlyApiRequestsLimit)) && Number(req.body.monthlyApiRequestsLimit) > 0
+      ? Math.floor(Number(req.body.monthlyApiRequestsLimit))
+      : defaultApiReq;
+
+    const resetDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
     const hash = await bcrypt.hash(String(password), 10);
     const result = await runQuery(
-      `INSERT INTO users (name, username, email, password_hash, role, storage_quota_bytes) VALUES (?, ?, ?, ?, ?, ?);`,
-      [String(name).trim(), normalizedUsername, normalizedEmail, hash, normalizedRole, quota]
+      `INSERT INTO users (name, username, email, password_hash, role, storage_quota_bytes, monthly_bandwidth_limit_bytes, monthly_api_requests_limit, bandwidth_cycle_reset_at) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+      [String(name).trim(), normalizedUsername, normalizedEmail, hash, normalizedRole, quota, bandwidthLimit, apiRequestsLimit, resetDate]
     );
 
     // Initialize the user's private storage directory immediately.
@@ -166,7 +181,9 @@ router.get('/users', async (req, res) => {
     const search = req.query.search || '';
     const filter = req.query.filter || 'all';
 
-    let sql = `SELECT id, name, username, email, email_verified, role, storage_quota_bytes, used_storage_bytes, is_suspended, is_suspicious, suspicious_reason, created_at FROM users WHERE 1=1 `;
+    let sql = `SELECT id, name, username, email, email_verified, role, storage_quota_bytes, used_storage_bytes, 
+                      monthly_bandwidth_limit_bytes, used_bandwidth_bytes, monthly_api_requests_limit, used_api_requests, bandwidth_cycle_reset_at,
+                      is_suspended, is_suspicious, suspicious_reason, created_at FROM users WHERE 1=1 `;
     const params = [];
 
     if (search) {
@@ -187,7 +204,11 @@ router.get('/users', async (req, res) => {
       enriched.push({
         ...u,
         realUsedBytes,
-        isOverQuota: realUsedBytes > Number(u.storage_quota_bytes || 0)
+        isOverQuota: realUsedBytes > Number(u.storage_quota_bytes || 0),
+        bandwidthFormattedLimit: formatBytes(u.monthly_bandwidth_limit_bytes || DEFAULT_MONTHLY_BANDWIDTH_BYTES),
+        bandwidthFormattedUsed: formatBytes(u.used_bandwidth_bytes || 0),
+        apiRequestsFormattedLimit: Number(u.monthly_api_requests_limit || DEFAULT_MONTHLY_API_REQUESTS).toLocaleString(),
+        apiRequestsFormattedUsed: Number(u.used_api_requests || 0).toLocaleString()
       });
     }
 
@@ -198,14 +219,14 @@ router.get('/users', async (req, res) => {
 });
 
 /**
- * 3. Update User (Quota, Role, Suspension Status, Username, Email, Password)
+ * 3. Update User (Quota, Bandwidth, API Requests, Role, Suspension Status, Username, Email, Password)
  */
 router.put('/users/:id', async (req, res) => {
   try {
     const userId = Number(req.params.id);
     if (!Number.isInteger(userId) || userId <= 0) return res.status(400).json({ error: 'Invalid user ID.' });
 
-    const { name, username, email, role, storageQuotaBytes, isSuspended, isSuspicious, newPassword } = req.body || {};
+    const { name, username, email, role, storageQuotaBytes, monthlyBandwidthLimitBytes, monthlyApiRequestsLimit, resetMonthlyCycle: doResetCycle, isSuspended, isSuspicious, newPassword } = req.body || {};
     const user = await getRow(`SELECT * FROM users WHERE id = ?;`, [userId]);
     if (!user) return res.status(404).json({ error: 'User not found.' });
 
@@ -250,6 +271,9 @@ router.put('/users/:id', async (req, res) => {
     if (typeof nextEmail !== 'undefined') await runQuery(`UPDATE users SET email = ?, email_verified = CASE WHEN ? THEN 0 ELSE email_verified END, updated_at = CURRENT_TIMESTAMP WHERE id = ?;`, [nextEmail, emailChanged ? 1 : 0, userId]);
     if (role) await runQuery(`UPDATE users SET role = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;`, [role, userId]);
     if (typeof storageQuotaBytes !== 'undefined') await runQuery(`UPDATE users SET storage_quota_bytes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;`, [Math.floor(Number(storageQuotaBytes)), userId]);
+    if (typeof monthlyBandwidthLimitBytes !== 'undefined' && Number(monthlyBandwidthLimitBytes) > 0) await runQuery(`UPDATE users SET monthly_bandwidth_limit_bytes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;`, [Math.floor(Number(monthlyBandwidthLimitBytes)), userId]);
+    if (typeof monthlyApiRequestsLimit !== 'undefined' && Number(monthlyApiRequestsLimit) > 0) await runQuery(`UPDATE users SET monthly_api_requests_limit = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;`, [Math.floor(Number(monthlyApiRequestsLimit)), userId]);
+    if (doResetCycle) await resetUserMonthlyCycle(userId);
     if (typeof isSuspended !== 'undefined') await runQuery(`UPDATE users SET is_suspended = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;`, [isSuspended ? 1 : 0, userId]);
     if (typeof isSuspicious !== 'undefined') await runQuery(`UPDATE users SET is_suspicious = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;`, [isSuspicious ? 1 : 0, userId]);
 
@@ -270,6 +294,27 @@ router.put('/users/:id', async (req, res) => {
       return res.status(409).json({ error: 'Username or email is already in use.' });
     }
     return res.status(500).json({ error: 'Failed to update user.' });
+  }
+});
+
+/**
+ * 3b. Admin Instant Reset Monthly Bandwidth & API Usage Cycle
+ */
+router.post('/users/:id/reset-usage', async (req, res) => {
+  try {
+    const userId = Number(req.params.id);
+    if (!Number.isInteger(userId) || userId <= 0) return res.status(400).json({ error: 'Invalid user ID.' });
+
+    const user = await getRow(`SELECT id, username FROM users WHERE id = ?;`, [userId]);
+    if (!user) return res.status(404).json({ error: 'User not found.' });
+
+    await resetUserMonthlyCycle(userId);
+    await logAudit(req.user.id, 'admin_reset_user_usage', { targetUserId: userId, username: user.username }, req);
+
+    const summary = await getUserUsageSummary(userId);
+    return res.json({ message: `Monthly bandwidth and API usage limits reset for ${user.username}.`, summary });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to reset usage: ' + err.message });
   }
 });
 

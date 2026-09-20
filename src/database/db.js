@@ -70,6 +70,11 @@ function initDatabase() {
             role TEXT NOT NULL DEFAULT 'user',
             storage_quota_bytes INTEGER NOT NULL DEFAULT 10737418240,
             used_storage_bytes INTEGER NOT NULL DEFAULT 0,
+            monthly_bandwidth_limit_bytes INTEGER NOT NULL DEFAULT 16106127360,
+            used_bandwidth_bytes INTEGER NOT NULL DEFAULT 0,
+            monthly_api_requests_limit INTEGER NOT NULL DEFAULT 100000,
+            used_api_requests INTEGER NOT NULL DEFAULT 0,
+            bandwidth_cycle_reset_at DATETIME,
             is_suspended INTEGER NOT NULL DEFAULT 0,
             is_suspicious INTEGER NOT NULL DEFAULT 0,
             suspicious_reason TEXT,
@@ -79,9 +84,15 @@ function initDatabase() {
           );
         `);
 
-        // Migrate existing installations that predate email verification.
+        // Migrate existing installations that predate email verification, quota, & bandwidth limits.
         await ensureColumn('users', 'email_verified', 'INTEGER NOT NULL DEFAULT 0');
         await ensureColumn('users', 'storage_overage_since', 'DATETIME');
+        await ensureColumn('users', 'monthly_bandwidth_limit_bytes', 'INTEGER NOT NULL DEFAULT 16106127360');
+        await ensureColumn('users', 'used_bandwidth_bytes', 'INTEGER NOT NULL DEFAULT 0');
+        await ensureColumn('users', 'monthly_api_requests_limit', 'INTEGER NOT NULL DEFAULT 100000');
+        await ensureColumn('users', 'used_api_requests', 'INTEGER NOT NULL DEFAULT 0');
+        await ensureColumn('users', 'bandwidth_cycle_reset_at', 'DATETIME');
+        await runQuery(`UPDATE users SET bandwidth_cycle_reset_at = datetime('now', '+30 days') WHERE bandwidth_cycle_reset_at IS NULL;`);
         await runQuery(`UPDATE users SET email_verified = 1 WHERE role = 'admin' AND email_verified = 0;`);
 
         // Account Email Verification Tokens
@@ -317,6 +328,8 @@ function initDatabase() {
         const defaultSettings = [
           ['anti_multi_account_enabled', 'true'],
           ['default_storage_quota_bytes', '10737418240'],
+          ['default_monthly_bandwidth_bytes', '16106127360'],
+          ['default_monthly_api_requests', '100000'],
           ['max_share_links_per_user', '3'],
           ['app_name', 'VPS Cloud Manager'],
           ['app_url', 'http://storage.zendevelopment.in'],
