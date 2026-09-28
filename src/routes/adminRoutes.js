@@ -183,7 +183,7 @@ router.get('/users', async (req, res) => {
 
     let sql = `SELECT id, name, username, email, email_verified, role, storage_quota_bytes, used_storage_bytes, 
                       monthly_bandwidth_limit_bytes, used_bandwidth_bytes, monthly_api_requests_limit, used_api_requests, bandwidth_cycle_reset_at,
-                      is_suspended, is_suspicious, suspicious_reason, created_at FROM users WHERE 1=1 `;
+                      is_suspended, suspension_reason, suspended_at, is_suspicious, suspicious_reason, created_at FROM users WHERE 1=1 `;
     const params = [];
 
     if (search) {
@@ -226,7 +226,7 @@ router.put('/users/:id', async (req, res) => {
     const userId = Number(req.params.id);
     if (!Number.isInteger(userId) || userId <= 0) return res.status(400).json({ error: 'Invalid user ID.' });
 
-    const { name, username, email, role, storageQuotaBytes, monthlyBandwidthLimitBytes, monthlyApiRequestsLimit, resetMonthlyCycle: doResetCycle, isSuspended, isSuspicious, newPassword } = req.body || {};
+    const { name, username, email, role, storageQuotaBytes, monthlyBandwidthLimitBytes, monthlyApiRequestsLimit, resetMonthlyCycle: doResetCycle, isSuspended, suspensionReason, reason, isSuspicious, newPassword } = req.body || {};
     const user = await getRow(`SELECT * FROM users WHERE id = ?;`, [userId]);
     if (!user) return res.status(404).json({ error: 'User not found.' });
 
@@ -235,6 +235,10 @@ router.put('/users/:id', async (req, res) => {
     }
     if (role === 'user' && userId === req.user.id) {
       return res.status(400).json({ error: 'You cannot remove administrator access from your own account.' });
+    }
+
+    if (typeof isSuspended !== 'undefined' && isSuspended && userId === req.user.id) {
+      return res.status(400).json({ error: 'You cannot suspend your own account.' });
     }
 
     const nextUsername = typeof username === 'string' ? username.trim().toLowerCase() : undefined;
@@ -274,7 +278,32 @@ router.put('/users/:id', async (req, res) => {
     if (typeof monthlyBandwidthLimitBytes !== 'undefined' && Number(monthlyBandwidthLimitBytes) > 0) await runQuery(`UPDATE users SET monthly_bandwidth_limit_bytes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;`, [Math.floor(Number(monthlyBandwidthLimitBytes)), userId]);
     if (typeof monthlyApiRequestsLimit !== 'undefined' && Number(monthlyApiRequestsLimit) > 0) await runQuery(`UPDATE users SET monthly_api_requests_limit = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;`, [Math.floor(Number(monthlyApiRequestsLimit)), userId]);
     if (doResetCycle) await resetUserMonthlyCycle(userId);
-    if (typeof isSuspended !== 'undefined') await runQuery(`UPDATE users SET is_suspended = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;`, [isSuspended ? 1 : 0, userId]);
+
+    // Handle suspension transition and automatic email sending
+    if (typeof isSuspended !== 'undefined') {
+      const targetSuspended = isSuspended ? 1 : 0;
+      const targetUserObj = {
+        id: userId,
+        name: nextName ?? user.name,
+        username: nextUsername ?? user.username,
+        email: nextEmail ?? user.email
+      };
+
+      if (targetSuspended === 1 && user.is_suspended !== 1) {
+        const suspendReasonText = (suspensionReason || reason || '').trim() || 'Administrative policy violation or security review.';
+        await runQuery(`UPDATE users SET is_suspended = 1, suspension_reason = ?, suspended_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?;`, [suspendReasonText, userId]);
+        await EmailService.sendUserSuspendedEmail(targetUserObj, suspendReasonText);
+        await logAudit(req.user.id, 'admin_suspend_user', { targetUserId: userId, username: targetUserObj.username, reason: suspendReasonText }, req);
+      } else if (targetSuspended === 0 && user.is_suspended === 1) {
+        const unsuspendReasonText = (suspensionReason || reason || '').trim() || 'Your account suspension has been lifted and access has been restored.';
+        await runQuery(`UPDATE users SET is_suspended = 0, suspension_reason = NULL, suspended_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?;`, [userId]);
+        await EmailService.sendUserUnsuspendedEmail(targetUserObj, unsuspendReasonText);
+        await logAudit(req.user.id, 'admin_unsuspend_user', { targetUserId: userId, username: targetUserObj.username, reason: unsuspendReasonText }, req);
+      } else {
+        await runQuery(`UPDATE users SET is_suspended = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;`, [targetSuspended, userId]);
+      }
+    }
+
     if (typeof isSuspicious !== 'undefined') await runQuery(`UPDATE users SET is_suspicious = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;`, [isSuspicious ? 1 : 0, userId]);
 
     if (newPassword) {
@@ -294,6 +323,63 @@ router.put('/users/:id', async (req, res) => {
       return res.status(409).json({ error: 'Username or email is already in use.' });
     }
     return res.status(500).json({ error: 'Failed to update user.' });
+  }
+});
+
+/**
+ * 3a. Admin Suspend User with Reason & Auto SMTP Mail
+ */
+router.post('/users/:id/suspend', async (req, res) => {
+  try {
+    const userId = Number(req.params.id);
+    if (!Number.isInteger(userId) || userId <= 0) return res.status(400).json({ error: 'Invalid user ID.' });
+    if (userId === req.user.id) return res.status(400).json({ error: 'You cannot suspend your own account.' });
+
+    const user = await getRow(`SELECT * FROM users WHERE id = ?;`, [userId]);
+    if (!user) return res.status(404).json({ error: 'User not found.' });
+
+    const reason = (req.body.reason || req.body.suspensionReason || '').trim() || 'Administrative policy violation or security review.';
+    await runQuery(`UPDATE users SET is_suspended = 1, suspension_reason = ?, suspended_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?;`, [reason, userId]);
+
+    const emailSent = await EmailService.sendUserSuspendedEmail(user, reason);
+    await logAudit(req.user.id, 'admin_suspend_user', { targetUserId: userId, username: user.username, reason, emailSent }, req);
+
+    return res.json({
+      message: `User @${user.username} has been suspended${emailSent ? ' and notification email sent' : ''}.`,
+      emailSent,
+      user: { id: user.id, username: user.username, is_suspended: 1, suspension_reason: reason }
+    });
+  } catch (err) {
+    console.error('Admin suspend user error:', err);
+    return res.status(500).json({ error: 'Failed to suspend user: ' + err.message });
+  }
+});
+
+/**
+ * 3b. Admin Unsuspend User with Auto SMTP Mail
+ */
+router.post('/users/:id/unsuspend', async (req, res) => {
+  try {
+    const userId = Number(req.params.id);
+    if (!Number.isInteger(userId) || userId <= 0) return res.status(400).json({ error: 'Invalid user ID.' });
+
+    const user = await getRow(`SELECT * FROM users WHERE id = ?;`, [userId]);
+    if (!user) return res.status(404).json({ error: 'User not found.' });
+
+    const reason = (req.body.reason || req.body.unsuspendReason || '').trim() || 'Your account suspension has been lifted and access has been restored.';
+    await runQuery(`UPDATE users SET is_suspended = 0, suspension_reason = NULL, suspended_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?;`, [userId]);
+
+    const emailSent = await EmailService.sendUserUnsuspendedEmail(user, reason);
+    await logAudit(req.user.id, 'admin_unsuspend_user', { targetUserId: userId, username: user.username, reason, emailSent }, req);
+
+    return res.json({
+      message: `User @${user.username} has been unsuspended${emailSent ? ' and notification email sent' : ''}.`,
+      emailSent,
+      user: { id: user.id, username: user.username, is_suspended: 0 }
+    });
+  } catch (err) {
+    console.error('Admin unsuspend user error:', err);
+    return res.status(500).json({ error: 'Failed to unsuspend user: ' + err.message });
   }
 });
 

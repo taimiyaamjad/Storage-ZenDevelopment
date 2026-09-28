@@ -7,7 +7,7 @@ const mime = require('mime-types');
 const SFTPService = require('../services/sftpService');
 const ArchiveService = require('../services/archiveService');
 const { requireAuth, logAudit } = require('../middleware/auth');
-const { runQuery, getRow } = require('../database/db');
+const { runQuery, getRow, getAll } = require('../database/db');
 const DownloadService = require('../services/downloadService');
 const { streamInlineFile } = require('../utils/previewStream');
 const { streamTranscodedPreview } = require('../services/videoPreviewService');
@@ -24,6 +24,19 @@ function requireDownloadAuth(req, res, next) {
 
 const requirePreviewAuth = requireDownloadAuth;
 
+/**
+ * Returns effective user ID for file operations.
+ * If logged in user is Admin and specifies targetUserId, targets that user's directory.
+ */
+function getEffectiveUserId(req) {
+  if (req.user && req.user.role === 'admin') {
+    const rawTarget = req.query?.targetUserId || req.body?.targetUserId || req.query?.userId || req.body?.userId || req.headers['x-target-user-id'];
+    if (rawTarget && !isNaN(Number(rawTarget)) && Number(rawTarget) > 0) {
+      return Number(rawTarget);
+    }
+  }
+  return req.user ? req.user.id : null;
+}
 
 async function getQuotaState(userId) {
   const user = await getRow(`SELECT storage_quota_bytes FROM users WHERE id = ?;`, [userId]);
@@ -43,14 +56,6 @@ async function persistUsage(userId) {
     }
   }
   return usedBytes;
-}
-
-function assertWithinQuota(usedBytes, quotaBytes, extraBytes = 0) {
-  if (usedBytes + extraBytes > quotaBytes) {
-    const err = new Error(`Storage quota exceeded! Your limit is ${formatQuotaGb(quotaBytes)} GB.`);
-    err.statusCode = 400;
-    throw err;
-  }
 }
 
 function formatQuotaGb(bytes) {
@@ -77,15 +82,60 @@ const upload = multer({
 });
 
 /**
- * 1. List files & folders in a directory
+ * 0. Admin User Directory Selector API
+ */
+router.get('/admin/user-directories', requireAuth, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required.' });
+    }
+    const users = await getAll(`SELECT id, name, username, email, role, storage_quota_bytes, used_storage_bytes, is_suspended FROM users ORDER BY username COLLATE NOCASE ASC;`);
+    return res.json(users);
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to load user directories list.' });
+  }
+});
+
+/**
+ * 1. List files & folders in a directory (supports admin targetUserId)
  */
 router.get('/list', requireAuth, async (req, res) => {
   try {
+    const userId = getEffectiveUserId(req);
     const dirPath = req.query.path || '/';
-    const result = await SFTPService.listDirectory(req.user.id, dirPath);
+    const result = await SFTPService.listDirectory(userId, dirPath);
+
+    // If admin is inspecting another user, attach target info
+    if (req.user.role === 'admin' && userId !== req.user.id) {
+      const targetUser = await getRow(`SELECT id, username, name, email FROM users WHERE id = ?;`, [userId]);
+      result.targetUser = targetUser;
+    }
+
     return res.json(result);
   } catch (err) {
     return res.status(400).json({ error: err.message });
+  }
+});
+
+/**
+ * 1b. Get User Storage Quota
+ */
+router.get('/quota', requireAuth, async (req, res) => {
+  try {
+    const userId = getEffectiveUserId(req);
+    const { quotaBytes, usedBytes } = await getQuotaState(userId);
+    const targetUser = (req.user.role === 'admin' && userId !== req.user.id)
+      ? await getRow(`SELECT id, username, name, email FROM users WHERE id = ?;`, [userId])
+      : null;
+
+    return res.json({
+      quotaBytes,
+      usedBytes,
+      targetUser,
+      isInspecting: Boolean(targetUser)
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
   }
 });
 
@@ -94,11 +144,12 @@ router.get('/list', requireAuth, async (req, res) => {
  */
 router.post('/create-folder', requireAuth, async (req, res) => {
   try {
+    const userId = getEffectiveUserId(req);
     const { path: dirPath } = req.body;
     if (!dirPath) return res.status(400).json({ error: 'Folder path is required.' });
 
-    await SFTPService.createDirectory(req.user.id, dirPath);
-    await logAudit(req.user.id, 'create_folder', { path: dirPath }, req);
+    await SFTPService.createDirectory(userId, dirPath);
+    await logAudit(req.user.id, 'create_folder', { targetUserId: userId, path: dirPath }, req);
     return res.json({ message: 'Folder created successfully.' });
   } catch (err) {
     return res.status(400).json({ error: err.message });
@@ -110,19 +161,20 @@ router.post('/create-folder', requireAuth, async (req, res) => {
  */
 router.post('/delete', requireAuth, async (req, res) => {
   try {
+    const userId = getEffectiveUserId(req);
     const { paths } = req.body;
     if (!paths || !Array.isArray(paths) || paths.length === 0) {
       return res.status(400).json({ error: 'Paths array is required.' });
     }
 
     for (const p of paths) {
-      await SFTPService.deletePath(req.user.id, p);
+      await SFTPService.deletePath(userId, p);
     }
 
     // Update real storage byte count
-    await persistUsage(req.user.id);
+    await persistUsage(userId);
 
-    await logAudit(req.user.id, 'delete_files', { paths }, req);
+    await logAudit(req.user.id, 'delete_files', { targetUserId: userId, paths }, req);
     return res.json({ message: 'Selected items deleted successfully.' });
   } catch (err) {
     return res.status(400).json({ error: err.message });
@@ -134,13 +186,14 @@ router.post('/delete', requireAuth, async (req, res) => {
  */
 router.post('/rename', requireAuth, async (req, res) => {
   try {
+    const userId = getEffectiveUserId(req);
     const { oldPath, newPath } = req.body;
     if (!oldPath || !newPath) {
       return res.status(400).json({ error: 'Old path and new path are required.' });
     }
 
-    await SFTPService.renameOrMove(req.user.id, oldPath, newPath);
-    await logAudit(req.user.id, 'rename_item', { oldPath, newPath }, req);
+    await SFTPService.renameOrMove(userId, oldPath, newPath);
+    await logAudit(req.user.id, 'rename_item', { targetUserId: userId, oldPath, newPath }, req);
     return res.json({ message: 'Renamed successfully.' });
   } catch (err) {
     return res.status(400).json({ error: err.message });
@@ -152,13 +205,14 @@ router.post('/rename', requireAuth, async (req, res) => {
  */
 router.post('/move', requireAuth, async (req, res) => {
   try {
+    const userId = getEffectiveUserId(req);
     const { items, destinationDir } = req.body;
     if (!items || !Array.isArray(items) || items.length === 0 || typeof destinationDir !== 'string') {
       return res.status(400).json({ error: 'Select at least one item and provide a destination directory.' });
     }
 
     const cleanDestination = destinationDir.trim() || '/';
-    const { absolutePath: destinationAbs } = SFTPService.resolveUserPath(req.user.id, cleanDestination);
+    const { absolutePath: destinationAbs } = SFTPService.resolveUserPath(userId, cleanDestination);
     if (!fs.existsSync(destinationAbs)) {
       return res.status(404).json({ error: 'Destination directory does not exist.' });
     }
@@ -167,7 +221,7 @@ router.post('/move', requireAuth, async (req, res) => {
     }
 
     for (const itemPath of items) {
-      const { absolutePath: sourceAbs } = SFTPService.resolveUserPath(req.user.id, itemPath);
+      const { absolutePath: sourceAbs } = SFTPService.resolveUserPath(userId, itemPath);
       if (!fs.existsSync(sourceAbs)) {
         return res.status(404).json({ error: `Source path not found: ${itemPath}` });
       }
@@ -177,7 +231,7 @@ router.post('/move', requireAuth, async (req, res) => {
 
       const fileName = path.basename(itemPath);
       const targetPath = path.join(cleanDestination, fileName);
-      const { absolutePath: targetAbs } = SFTPService.resolveUserPath(req.user.id, targetPath);
+      const { absolutePath: targetAbs } = SFTPService.resolveUserPath(userId, targetPath);
       if (fs.existsSync(targetAbs)) {
         return res.status(409).json({ error: `Destination already contains: ${fileName}` });
       }
@@ -185,10 +239,10 @@ router.post('/move', requireAuth, async (req, res) => {
         return res.status(400).json({ error: 'A folder cannot be moved inside itself.' });
       }
 
-      await SFTPService.renameOrMove(req.user.id, itemPath, targetPath);
+      await SFTPService.renameOrMove(userId, itemPath, targetPath);
     }
 
-    await logAudit(req.user.id, 'move_items', { items, destinationDir: cleanDestination }, req);
+    await logAudit(req.user.id, 'move_items', { targetUserId: userId, items, destinationDir: cleanDestination }, req);
     return res.json({ message: 'Items moved successfully.' });
   } catch (err) {
     return res.status(400).json({ error: err.message });
@@ -200,6 +254,7 @@ router.post('/move', requireAuth, async (req, res) => {
  */
 router.post('/copy', requireAuth, async (req, res) => {
   try {
+    const userId = getEffectiveUserId(req);
     const { items, destinationDir } = req.body;
     if (!items || !Array.isArray(items) || !destinationDir) {
       return res.status(400).json({ error: 'Items array and destination directory are required.' });
@@ -208,13 +263,13 @@ router.post('/copy', requireAuth, async (req, res) => {
     for (const itemPath of items) {
       const fileName = path.basename(itemPath);
       const targetPath = path.join(destinationDir, fileName);
-      await SFTPService.copyPath(req.user.id, itemPath, targetPath);
+      await SFTPService.copyPath(userId, itemPath, targetPath);
     }
 
     // Recalculate usage
-    await persistUsage(req.user.id);
+    await persistUsage(userId);
 
-    await logAudit(req.user.id, 'copy_items', { items, destinationDir }, req);
+    await logAudit(req.user.id, 'copy_items', { targetUserId: userId, items, destinationDir }, req);
     return res.json({ message: 'Items copied successfully.' });
   } catch (err) {
     return res.status(400).json({ error: err.message });
@@ -226,41 +281,44 @@ router.post('/copy', requireAuth, async (req, res) => {
  */
 router.post('/upload', requireAuth, upload.array('files'), async (req, res) => {
   try {
+    const userId = getEffectiveUserId(req);
     const targetDir = req.body.targetDir || '/';
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ error: 'No files provided for upload.' });
     }
 
     // Check user quota before moving files
-    const currentUsed = SFTPService.calculateUserStorageBytes(req.user.id);
+    const targetUser = await getRow(`SELECT storage_quota_bytes FROM users WHERE id = ?;`, [userId]);
+    const quotaBytes = targetUser ? Number(targetUser.storage_quota_bytes || 10737418240) : 10737418240;
+    const currentUsed = SFTPService.calculateUserStorageBytes(userId);
     let incomingSize = 0;
     for (const file of req.files) {
       incomingSize += file.size;
     }
 
-    if (currentUsed + incomingSize > req.user.storage_quota_bytes) {
+    if (currentUsed + incomingSize > quotaBytes) {
       // Clean up uploaded temp files
       for (const file of req.files) {
         if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
       }
       return res.status(400).json({
-        error: `Storage quota exceeded! Your limit is ${(req.user.storage_quota_bytes / 1073741824).toFixed(2)} GB.`
+        error: `Storage quota exceeded! User limit is ${formatQuotaGb(quotaBytes)} GB.`
       });
     }
 
     // Move uploaded files to user SFTP directory
     for (const file of req.files) {
       const targetFilePath = path.join(targetDir, file.originalname);
-      const { absolutePath: destAbs } = SFTPService.resolveUserPath(req.user.id, targetFilePath);
+      const { absolutePath: destAbs } = SFTPService.resolveUserPath(userId, targetFilePath);
 
       fs.copyFileSync(file.path, destAbs);
       fs.unlinkSync(file.path);
     }
 
     // Recalculate and update storage
-    await persistUsage(req.user.id);
+    await persistUsage(userId);
 
-    await logAudit(req.user.id, 'upload_files', { count: req.files.length, totalBytes: incomingSize }, req);
+    await logAudit(req.user.id, 'upload_files', { targetUserId: userId, count: req.files.length, totalBytes: incomingSize }, req);
     return res.json({ message: 'Files uploaded successfully!', count: req.files.length });
   } catch (err) {
     return res.status(500).json({ error: err.message });
@@ -272,10 +330,11 @@ router.post('/upload', requireAuth, upload.array('files'), async (req, res) => {
  */
 router.get('/download', requireDownloadAuth, async (req, res) => {
   try {
+    const userId = getEffectiveUserId(req);
     const filePath = req.query.path;
     if (!filePath) return res.status(400).json({ error: 'File path parameter is required.' });
 
-    const { absolutePath } = SFTPService.resolveUserPath(req.user.id, filePath);
+    const { absolutePath } = SFTPService.resolveUserPath(userId, filePath);
 
     if (!fs.existsSync(absolutePath)) {
       return res.status(404).json({ error: 'File not found.' });
@@ -285,7 +344,7 @@ router.get('/download', requireDownloadAuth, async (req, res) => {
     if (stat.isDirectory()) {
       // Download directory as temporary zip
       const tempZipName = `download_${Date.now()}.zip`;
-      const { archivePath } = await ArchiveService.compress(req.user.id, [filePath], tempZipName, 'zip');
+      const { archivePath } = await ArchiveService.compress(userId, [filePath], tempZipName, 'zip');
       startDownloadMonitor(req, {
         requestedUrl: req.originalUrl,
         endpoint: req.path,
@@ -306,10 +365,7 @@ router.get('/download', requireDownloadAuth, async (req, res) => {
       fileSizeBytes: stat.size
     }).then(id => watchResponse(res, id)).catch(err => console.error('Download monitor start error:', err.message));
 
-    // Fire the audit log without waiting for it: a slow/contended DB write must
-    // never delay the bytes going out to the browser's download manager. The
-    // download itself streams first; logging happens in parallel.
-    logAudit(req.user.id, 'download_file', { filePath }, req).catch(err => console.error('Audit log error:', err.message));
+    logAudit(req.user.id, 'download_file', { targetUserId: userId, filePath }, req).catch(err => console.error('Audit log error:', err.message));
 
     const filename = path.basename(filePath);
     const mimeType = mime.lookup(absolutePath) || 'application/octet-stream';
@@ -318,9 +374,6 @@ router.get('/download', requireDownloadAuth, async (req, res) => {
     res.setHeader('Accept-Ranges', 'bytes');
     res.setHeader('Cache-Control', 'private, no-store');
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    // Prevent nginx/other reverse proxies from buffering the whole file in
-    // memory before forwarding it, which is a common cause of a download that
-    // "takes forever to start" on large files.
     res.setHeader('X-Accel-Buffering', 'no');
 
     return res.sendFile(absolutePath, { acceptRanges: true, cacheControl: false, lastModified: false, dotfiles: 'deny' }, (err) => {
@@ -341,19 +394,16 @@ router.get('/download', requireDownloadAuth, async (req, res) => {
  */
 router.get('/preview', requirePreviewAuth, async (req, res) => {
   try {
+    const userId = getEffectiveUserId(req);
     const filePath = req.query.path;
     if (!filePath) return res.status(400).json({ error: 'File path is required.' });
 
-    const { absolutePath } = SFTPService.resolveUserPath(req.user.id, filePath);
+    const { absolutePath } = SFTPService.resolveUserPath(userId, filePath);
     if (!fs.existsSync(absolutePath)) return res.status(404).json({ error: 'File not found.' });
 
     const stat = fs.statSync(absolutePath);
     if (!stat.isFile()) return res.status(400).json({ error: 'Folders cannot be previewed.' });
 
-    // Stream the original media immediately. Modern browsers can use HTTP Range
-    // requests and begin playback without waiting for a server-side conversion.
-    // Unsupported codecs are handled by /preview-transcoded as an automatic
-    // frontend fallback, so compatible MP4/H.264 files stay instant.
     return streamInlineFile(req, res, absolutePath);
   } catch (err) {
     return res.status(500).json({ error: err.message });
@@ -362,15 +412,14 @@ router.get('/preview', requirePreviewAuth, async (req, res) => {
 
 /**
  * 9b. Live browser-compatible video fallback.
- * The original file is never modified. FFmpeg creates a fragmented MP4 stream
- * immediately and simultaneously caches the completed preview for later use.
  */
 router.get('/preview-transcoded', requirePreviewAuth, async (req, res) => {
   try {
+    const userId = getEffectiveUserId(req);
     const filePath = req.query.path;
     if (!filePath) return res.status(400).json({ error: 'File path is required.' });
 
-    const { absolutePath } = SFTPService.resolveUserPath(req.user.id, filePath);
+    const { absolutePath } = SFTPService.resolveUserPath(userId, filePath);
     if (!fs.existsSync(absolutePath)) return res.status(404).json({ error: 'File not found.' });
     const stat = fs.statSync(absolutePath);
     if (!stat.isFile()) return res.status(400).json({ error: 'Folders cannot be previewed.' });
@@ -395,23 +444,68 @@ router.get('/preview-transcoded', requirePreviewAuth, async (req, res) => {
 });
 
 /**
+ * 9c. Read raw text / code file content
+ */
+router.get('/content', requireAuth, async (req, res) => {
+  try {
+    const userId = getEffectiveUserId(req);
+    const filePath = req.query.path;
+    if (!filePath) return res.status(400).json({ error: 'File path is required.' });
+
+    const { absolutePath } = SFTPService.resolveUserPath(userId, filePath);
+    if (!fs.existsSync(absolutePath)) return res.status(404).json({ error: 'File not found.' });
+
+    const stat = fs.statSync(absolutePath);
+    if (stat.size > 5 * 1024 * 1024) {
+      return res.status(400).json({ error: 'File is too large to view directly in browser (maximum 5 MB).' });
+    }
+
+    const content = fs.readFileSync(absolutePath, 'utf8');
+    return res.json({ content, path: filePath, name: path.basename(filePath) });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * 9d. Save edited text / code file content
+ */
+router.post('/save-content', requireAuth, async (req, res) => {
+  try {
+    const userId = getEffectiveUserId(req);
+    const { path: filePath, content } = req.body || {};
+    if (!filePath || typeof content !== 'string') return res.status(400).json({ error: 'File path and content are required.' });
+
+    const { absolutePath } = SFTPService.resolveUserPath(userId, filePath);
+    fs.writeFileSync(absolutePath, content, 'utf8');
+
+    await persistUsage(userId);
+    await logAudit(req.user.id, 'edit_file_content', { targetUserId: userId, path: filePath }, req);
+
+    return res.json({ message: 'File saved successfully.' });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
  * 10. Start background download from a direct HTTP/HTTPS URL.
- * wget runs server-side and the resulting file is placed in the user's current directory.
  */
 router.post('/download-from-url', requireAuth, async (req, res) => {
   try {
+    const userId = getEffectiveUserId(req);
     const { url, filename, targetDir } = req.body || {};
     if (!url || !String(url).trim()) return res.status(400).json({ error: 'Download URL is required.' });
 
     const job = await DownloadService.startDownload({
-      userId: req.user.id,
+      userId,
       url,
       filename,
       targetDir: typeof targetDir === 'string' && targetDir.trim() ? targetDir.trim() : '/',
       request: req
     });
 
-    await logAudit(req.user.id, 'start_url_download', { filename: job.filename, targetPath: job.path }, req);
+    await logAudit(req.user.id, 'start_url_download', { targetUserId: userId, filename: job.filename, targetPath: job.path }, req);
     return res.status(202).json({
       message: 'Download started in the background.',
       job
@@ -426,7 +520,8 @@ router.post('/download-from-url', requireAuth, async (req, res) => {
  */
 router.get('/download-jobs', requireAuth, async (req, res) => {
   try {
-    return res.json(await DownloadService.getUserJobs(req.user.id));
+    const userId = getEffectiveUserId(req);
+    return res.json(await DownloadService.getUserJobs(userId));
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
@@ -435,7 +530,8 @@ router.get('/download-jobs', requireAuth, async (req, res) => {
 /** Remove a URL download from the user's recent-download history. */
 router.delete('/download-jobs/:id', requireAuth, async (req, res) => {
   try {
-    const job = await DownloadService.removeUserJob(req.user.id, req.params.id);
+    const userId = getEffectiveUserId(req);
+    const job = await DownloadService.removeUserJob(userId, req.params.id);
     return res.json({ message: 'Download removed from recent history.', job });
   } catch (err) {
     return res.status(404).json({ error: err.message });
@@ -445,7 +541,8 @@ router.delete('/download-jobs/:id', requireAuth, async (req, res) => {
 /** Clear all completed/failed entries from the user's URL download history. */
 router.delete('/download-jobs', requireAuth, async (req, res) => {
   try {
-    const result = await DownloadService.clearUserJobs(req.user.id);
+    const userId = getEffectiveUserId(req);
+    const result = await DownloadService.clearUserJobs(userId);
     return res.json({ message: 'Download history cleared.', ...result });
   } catch (err) {
     return res.status(500).json({ error: err.message });
@@ -457,17 +554,18 @@ router.delete('/download-jobs', requireAuth, async (req, res) => {
  */
 router.post('/compress', requireAuth, async (req, res) => {
   try {
+    const userId = getEffectiveUserId(req);
     const { items, archiveName, format } = req.body;
     if (!items || !Array.isArray(items) || !archiveName) {
       return res.status(400).json({ error: 'Items array and archive name are required.' });
     }
 
-    await ArchiveService.compress(req.user.id, items, archiveName, format || 'zip');
+    await ArchiveService.compress(userId, items, archiveName, format || 'zip');
 
     // Update storage bytes
-    await persistUsage(req.user.id);
+    await persistUsage(userId);
 
-    await logAudit(req.user.id, 'compress_files', { items, archiveName, format }, req);
+    await logAudit(req.user.id, 'compress_files', { targetUserId: userId, items, archiveName, format }, req);
     return res.json({ message: 'Archive created successfully!' });
   } catch (err) {
     return res.status(400).json({ error: err.message });
@@ -475,19 +573,20 @@ router.post('/compress', requireAuth, async (req, res) => {
 });
 
 /**
- * 11. Archive Extraction API
+ * 13. Archive Extraction API
  */
 router.post('/extract', requireAuth, async (req, res) => {
   try {
+    const userId = getEffectiveUserId(req);
     const { archivePath, targetDir } = req.body;
     if (!archivePath) return res.status(400).json({ error: 'Archive path is required.' });
 
-    await ArchiveService.extract(req.user.id, archivePath, targetDir || '/');
+    await ArchiveService.extract(userId, archivePath, targetDir || '/');
 
     // Update storage bytes
-    await persistUsage(req.user.id);
+    await persistUsage(userId);
 
-    await logAudit(req.user.id, 'extract_archive', { archivePath, targetDir }, req);
+    await logAudit(req.user.id, 'extract_archive', { targetUserId: userId, archivePath, targetDir }, req);
     return res.json({ message: 'Archive extracted successfully!' });
   } catch (err) {
     return res.status(400).json({ error: err.message });

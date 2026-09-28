@@ -92,6 +92,8 @@ function initDatabase() {
         await ensureColumn('users', 'monthly_api_requests_limit', 'INTEGER NOT NULL DEFAULT 100000');
         await ensureColumn('users', 'used_api_requests', 'INTEGER NOT NULL DEFAULT 0');
         await ensureColumn('users', 'bandwidth_cycle_reset_at', 'DATETIME');
+        await ensureColumn('users', 'suspension_reason', 'TEXT');
+        await ensureColumn('users', 'suspended_at', 'DATETIME');
         await runQuery(`UPDATE users SET bandwidth_cycle_reset_at = datetime('now', '+30 days') WHERE bandwidth_cycle_reset_at IS NULL;`);
         await runQuery(`UPDATE users SET email_verified = 1 WHERE role = 'admin' AND email_verified = 0;`);
 
@@ -693,6 +695,142 @@ function initDatabase() {
       </div>
     </div>
     `
+    ],
+
+    [
+      'user_suspended',
+      'Account Suspended Notification',
+      'Important: Your {{app_name}} account has been suspended',
+      `
+      <div style="margin:0;padding:0;background:#ffffff;font-family:Arial,Helvetica,sans-serif;color:#111827;">
+        <div style="max-width:600px;margin:0 auto;background:#ffffff;">
+
+          <!-- Header -->
+          <div style="background:#1f1f1f;padding:30px 25px;">
+            <div style="font-size:24px;font-weight:700;">
+              <span style="color:#ef4444;">Zen</span><span style="color:#ffffff;">Storage</span>
+            </div>
+          </div>
+
+          <!-- Content -->
+          <div style="padding:30px 25px;">
+
+            <h1 style="margin:0 0 20px 0;font-size:26px;line-height:1.25;color:#b91c1c;font-weight:700;">
+              Account Suspended
+            </h1>
+
+            <p style="margin:0 0 16px 0;font-size:13px;line-height:1.7;color:#374151;">
+              Hello <strong>{{name}}</strong> (<em>{{username}}</em>),
+            </p>
+
+            <p style="margin:0 0 20px 0;font-size:13px;line-height:1.7;color:#374151;">
+              Your account on <strong>{{app_name}}</strong> has been suspended by an administrator.
+              While suspended, your access to SFTP, storage management, API clusters, and file sharing is restricted.
+            </p>
+
+            <!-- Suspension Reason Box -->
+            <div style="background:#fef2f2;border-left:4px solid #ef4444;padding:18px 16px;margin:0 0 22px 0;">
+              <div style="font-size:14px;font-weight:700;color:#991b1b;margin-bottom:8px;">
+                Reason for Suspension:
+              </div>
+              <div style="font-size:13px;line-height:1.7;color:#1f2937;background:#ffffff;padding:10px 14px;border:1px solid #fee2e2;border-radius:4px;">
+                {{reason}}
+              </div>
+              <div style="font-size:11px;color:#6b7280;margin-top:10px;">
+                Suspension Date: <strong>{{suspended_at}}</strong>
+              </div>
+            </div>
+
+            <p style="margin:0 0 16px 0;font-size:12px;line-height:1.7;color:#4b5563;">
+              If you believe this suspension was made in error or would like to request account review, please contact our support team.
+            </p>
+
+          </div>
+
+          <!-- Footer -->
+          <div style="background:#f8fafc;border-top:1px solid #e5e7eb;padding:18px 25px;">
+            <p style="margin:0 0 4px 0;font-size:10px;line-height:1.6;color:#6b7280;">
+              © ${new Date().getFullYear()} {{app_name}}. All rights reserved.
+            </p>
+            <p style="margin:0;font-size:10px;line-height:1.6;color:#9ca3af;">
+              This is an automated notification regarding your account status.
+            </p>
+          </div>
+
+        </div>
+      </div>
+      `
+    ],
+
+    [
+      'user_unsuspended',
+      'Account Reactivated Notification',
+      'Good news: Your {{app_name}} account has been reactivated',
+      `
+      <div style="margin:0;padding:0;background:#ffffff;font-family:Arial,Helvetica,sans-serif;color:#111827;">
+        <div style="max-width:600px;margin:0 auto;background:#ffffff;">
+
+          <!-- Header -->
+          <div style="background:#1f1f1f;padding:30px 25px;">
+            <div style="font-size:24px;font-weight:700;">
+              <span style="color:#10b981;">Zen</span><span style="color:#ffffff;">Storage</span>
+            </div>
+          </div>
+
+          <!-- Content -->
+          <div style="padding:30px 25px;">
+
+            <h1 style="margin:0 0 20px 0;font-size:26px;line-height:1.25;color:#047857;font-weight:700;">
+              Account Reactivated
+            </h1>
+
+            <p style="margin:0 0 16px 0;font-size:13px;line-height:1.7;color:#374151;">
+              Hello <strong>{{name}}</strong> (<em>{{username}}</em>),
+            </p>
+
+            <p style="margin:0 0 20px 0;font-size:13px;line-height:1.7;color:#374151;">
+              Great news! Your account on <strong>{{app_name}}</strong> has been unsuspended and fully reactivated.
+              You now have full access to your cloud storage, SFTP, and API services again.
+            </p>
+
+            <!-- Reactivation Note Box -->
+            <div style="background:#f0fdf4;border-left:4px solid #10b981;padding:18px 16px;margin:0 0 22px 0;">
+              <div style="font-size:14px;font-weight:700;color:#065f46;margin-bottom:8px;">
+                Reactivation Details:
+              </div>
+              <div style="font-size:13px;line-height:1.7;color:#1f2937;background:#ffffff;padding:10px 14px;border:1px solid #dcfce7;border-radius:4px;">
+                {{reason}}
+              </div>
+              <div style="font-size:11px;color:#6b7280;margin-top:10px;">
+                Reactivated Date: <strong>{{reactivated_at}}</strong>
+              </div>
+            </div>
+
+            <!-- Login CTA Button -->
+            <div style="margin:0 0 24px 0;">
+              <a href="{{login_url}}"
+                 style="display:inline-block;background:#10b981;color:#ffffff;text-decoration:none;
+                 font-size:13px;font-weight:700;padding:12px 22px;border-radius:6px;">
+                Log In to Your Account
+              </a>
+            </div>
+
+            <p style="margin:0 0 16px 0;font-size:12px;line-height:1.7;color:#4b5563;">
+              Thank you for being part of {{app_name}}. If you need any assistance, feel free to reach out to our team.
+            </p>
+
+          </div>
+
+          <!-- Footer -->
+          <div style="background:#f8fafc;border-top:1px solid #e5e7eb;padding:18px 25px;">
+            <p style="margin:0 0 4px 0;font-size:10px;line-height:1.6;color:#6b7280;">
+              © ${new Date().getFullYear()} {{app_name}}. All rights reserved.
+            </p>
+          </div>
+
+        </div>
+      </div>
+      `
     ]
         ];
 

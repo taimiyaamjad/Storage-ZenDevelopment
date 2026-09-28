@@ -16,7 +16,7 @@ const publicRoutes = require('./src/routes/publicRoutes');
 const apiKeyRoutes = require('./src/routes/apiKeyRoutes');
 const blobRoutes = require('./src/routes/blobRoutes');
 const s3Routes = require('./src/routes/s3Routes');
-const setupConsoleWebSocket = require('./src/services/consoleService');
+const { setupConsoleWebSocket, handleHttpConsoleStream, handleHttpConsoleInput, handleHttpConsoleResize, handleHttpConsoleClose } = require('./src/services/consoleService');
 
 const app = express();
 const server = http.createServer(app);
@@ -97,6 +97,12 @@ app.get('/api/public/bundle.tar.gz', (req, res) => {
 // Static files (Frontend build output)
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Admin VPS Console HTTP Streaming Fallback Routes
+app.get('/api/admin/console/stream', handleHttpConsoleStream);
+app.post('/api/admin/console/input', handleHttpConsoleInput);
+app.post('/api/admin/console/resize', handleHttpConsoleResize);
+app.post('/api/admin/console/close', handleHttpConsoleClose);
+
 // API Routes
 app.use('/api/public', publicRoutes);
 app.use('/api/auth', authRoutes);
@@ -107,16 +113,11 @@ app.use('/api/keys', apiKeyRoutes);
 app.use('/api/v1/blob', blobRoutes);
 app.use('/api/s3', s3Routes);
 
-// Health check API
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', time: new Date().toISOString() });
-});
-
 // Handle WebSocket upgrade for Admin VPS Console
 server.on('upgrade', (request, socket, head) => {
   try {
-    const host = request.headers.host || 'localhost';
-    const pathname = new URL(request.url, `http://${host}`).pathname.replace(/\/$/, '');
+    const parsedUrl = new URL(request.url, 'http://127.0.0.1');
+    const pathname = parsedUrl.pathname.replace(/\/$/, '');
     if (pathname === '/api/admin/console') {
       wss.handleUpgrade(request, socket, head, (ws) => {
         wss.emit('connection', ws, request);

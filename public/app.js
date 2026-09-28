@@ -23,7 +23,11 @@ const AppState = {
   downloadJobsTimer: null,
   previewObjectUrl: null,
   quotaRequestId: 0,
-  displayedQuotaPercent: 0
+  displayedQuotaPercent: 0,
+  targetUserId: null,
+  targetUser: null,
+  directoryUserList: [],
+  consoleMode: 'auto'
 };
 
 // Sync HTML theme immediately
@@ -101,6 +105,10 @@ async function apiRequest(endpoint, options = {}) {
   if (AppState.token) {
     headers['Authorization'] = `Bearer ${AppState.token}`;
   }
+  // If logged in as admin and inspecting a target user directory, pass target user header for file API requests
+  if (AppState.user && AppState.user.role === 'admin' && AppState.targetUserId && endpoint.startsWith('/files')) {
+    headers['x-target-user-id'] = String(AppState.targetUserId);
+  }
   if (options.body && !(options.body instanceof FormData)) {
     headers['Content-Type'] = 'application/json';
     options.body = JSON.stringify(options.body);
@@ -121,6 +129,81 @@ async function apiRequest(endpoint, options = {}) {
     return data;
   } catch (err) {
     throw err;
+  }
+}
+
+function getEffectiveDownloadUrl(filePath) {
+  let url = `/api/files/download?path=${encodeURIComponent(filePath)}&token=${encodeURIComponent(AppState.token || '')}`;
+  if (AppState.user && AppState.user.role === 'admin' && AppState.targetUserId) {
+    url += `&targetUserId=${encodeURIComponent(AppState.targetUserId)}`;
+  }
+  return url;
+}
+
+function getEffectivePreviewUrl(filePath, extra = '') {
+  let url = `/api/files/preview?path=${encodeURIComponent(filePath)}&token=${encodeURIComponent(AppState.token || '')}`;
+  if (AppState.user && AppState.user.role === 'admin' && AppState.targetUserId) {
+    url += `&targetUserId=${encodeURIComponent(AppState.targetUserId)}`;
+  }
+  if (extra) url += extra;
+  return url;
+}
+
+function getEffectiveTranscodedUrl(filePath, safe = false) {
+  let url = `/api/files/preview-transcoded?path=${encodeURIComponent(filePath)}&token=${encodeURIComponent(AppState.token || '')}`;
+  if (AppState.user && AppState.user.role === 'admin' && AppState.targetUserId) {
+    url += `&targetUserId=${encodeURIComponent(AppState.targetUserId)}`;
+  }
+  if (safe) url += '&safe=1';
+  return url;
+}
+
+async function inspectUserDirectory(userId, username) {
+  AppState.targetUserId = Number(userId);
+  AppState.targetUser = (AppState.adminUsers || []).find(u => Number(u.id) === Number(userId)) || { id: userId, username };
+  AppState.currentPath = '/';
+  AppState.selectedPaths = [];
+  showToast(`Switching to directory for ${username}...`, 'info');
+  navigateTab('files');
+}
+
+function resetAdminUserDirectory() {
+  AppState.targetUserId = null;
+  AppState.targetUser = null;
+  AppState.currentPath = '/';
+  AppState.selectedPaths = [];
+  showToast('Returned to your personal storage directory.', 'info');
+  navigateTab('files');
+}
+
+async function handleAdminUserDirectoryChange(targetVal) {
+  if (!targetVal) {
+    resetAdminUserDirectory();
+  } else {
+    const userId = Number(targetVal);
+    const users = AppState.directoryUserList || AppState.adminUsers || [];
+    const targetUser = users.find(u => Number(u.id) === userId) || { id: userId, username: `User #${userId}` };
+    inspectUserDirectory(userId, targetUser.username || targetUser.name);
+  }
+}
+
+async function loadAdminUserDirectoryDropdown() {
+  const select = document.getElementById('admin-user-directory-select');
+  if (!select) return;
+  try {
+    const users = await apiRequest('/files/admin/user-directories');
+    AppState.directoryUserList = users;
+    let html = `<option value="">📁 My Storage (Self - ${escapeHtml(AppState.user?.username || 'admin')})</option>`;
+    users.forEach(u => {
+      const isCurrentAdmin = Number(u.id) === Number(AppState.user?.id);
+      if (isCurrentAdmin) return;
+      const isSelected = AppState.targetUserId && Number(AppState.targetUserId) === Number(u.id);
+      const displayName = u.name && u.name !== u.username ? `${escapeHtml(u.username)} (${escapeHtml(u.name)})` : escapeHtml(u.username);
+      html += `<option value="${u.id}" ${isSelected ? 'selected' : ''}>👤 ${displayName} · ${formatBytes(u.used_storage_bytes || 0)}</option>`;
+    });
+    select.innerHTML = html;
+  } catch (e) {
+    console.error('Failed to load user directories dropdown:', e);
   }
 }
 
@@ -861,6 +944,10 @@ function navigateTab(tabName) {
   renderApp();
 }
 
+function switchTab(tabName) {
+  navigateTab(tabName);
+}
+
 function toggleDarkMode() {
   AppState.isDarkMode = !AppState.isDarkMode;
   AppState.theme = AppState.isDarkMode ? 'dark' : 'light';
@@ -976,30 +1063,73 @@ function renderTabContent() {
 // 3. FILE MANAGER COMPONENT (Upload, Operations, Compression)
 // ==========================================
 async function renderFileManagerTab(container) {
+  const isAdmin = AppState.user && AppState.user.role === 'admin';
+  const isInspecting = isAdmin && Boolean(AppState.targetUserId);
+  const targetLabel = AppState.targetUser ? (AppState.targetUser.username || AppState.targetUser.name || `User #${AppState.targetUserId}`) : `User #${AppState.targetUserId}`;
+
   container.innerHTML = `
-    <div class="space-y-4">
+    <div class="space-y-4 w-full max-w-full min-w-0">
+      ${isAdmin ? `
+        <!-- Admin User Directory Scope Selector -->
+        <div class="w-full max-w-full min-w-0 p-3.5 sm:p-4 rounded-2xl border ${isInspecting ? 'bg-amber-500/10 border-amber-500/30' : 'glass-card border-slate-200 dark:border-slate-800'} space-y-3 overflow-hidden box-border">
+          <div class="flex items-start gap-2.5 sm:gap-3 min-w-0 w-full">
+            <div class="w-9 h-9 rounded-xl ${isInspecting ? 'bg-amber-500/20 text-amber-500 dark:text-amber-400' : 'bg-sky-500/20 text-sky-500 dark:text-sky-400'} flex items-center justify-center font-bold text-xs shrink-0 mt-0.5 sm:mt-0">
+              <i data-lucide="${isInspecting ? 'user-check' : 'shield'}" class="w-4 h-4"></i>
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="flex flex-wrap items-center gap-1.5 sm:gap-2 min-w-0">
+                <span class="text-xs font-bold text-slate-900 dark:text-white shrink-0">Admin Directory Scope:</span>
+                ${isInspecting 
+                  ? `<span class="inline-flex items-center px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-600 dark:text-amber-300 font-mono text-[11px] font-bold truncate max-w-full" title="Inspecting User #${AppState.targetUserId}: ${escapeHtml(targetLabel)}">Inspecting User #${AppState.targetUserId}: ${escapeHtml(targetLabel)}</span>` 
+                  : `<span class="inline-flex items-center px-2 py-0.5 rounded-md bg-sky-500/20 text-sky-600 dark:text-sky-300 font-mono text-[11px] font-bold truncate max-w-full">My Personal Storage (Self)</span>`}
+              </div>
+              <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1 break-words leading-relaxed">
+                ${isInspecting 
+                  ? `Full administrative access: browse, upload, download, edit, and manage files in <b class="text-slate-700 dark:text-slate-200">${escapeHtml(targetLabel)}</b>'s directory.` 
+                  : `You are in your own directory. Select any registered user from the switcher to inspect and manage their directory.`}
+              </p>
+            </div>
+          </div>
+
+          <!-- Controls: Full width stacked on mobile, row on tablet/desktop -->
+          <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-2.5 border-t border-slate-200/60 dark:border-slate-800/60 min-w-0 w-full">
+            <div class="relative flex-1 min-w-0 w-full max-w-full">
+              <select id="admin-user-directory-select" onchange="handleAdminUserDirectoryChange(this.value)" class="w-full min-w-0 max-w-full pitch-input rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 truncate cursor-pointer focus:outline-none focus:ring-1 focus:ring-amber-500/50" style="max-width: 100%;">
+                <option value="">📁 My Admin Directory (Self)</option>
+              </select>
+            </div>
+            ${isInspecting ? `
+              <button onclick="resetAdminUserDirectory()" class="w-full sm:w-auto shrink-0 justify-center px-3.5 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-all whitespace-nowrap shadow-sm active:scale-95">
+                <i data-lucide="corner-up-left" class="w-3.5 h-3.5 shrink-0"></i>
+                <span>Exit to My Storage</span>
+              </button>
+            ` : ''}
+          </div>
+        </div>
+      ` : ''}
+
       <!-- File Action Bar -->
-      <div class="flex flex-wrap items-center justify-between gap-3 glass-card p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
-        <div class="flex flex-wrap items-center gap-2">
+      <div class="flex flex-wrap items-center justify-between gap-3 glass-card p-3 sm:p-4 rounded-2xl border border-slate-200 dark:border-slate-800 w-full max-w-full min-w-0 overflow-hidden">
+        <div class="flex flex-wrap items-center gap-2 min-w-0">
           <!-- Upload Button -->
-          <label class="bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold px-4 py-2.5 rounded-xl cursor-pointer flex items-center gap-2 shadow-lg shadow-sky-600/20 transition-all">
+          <label class="bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl cursor-pointer flex items-center gap-2 shadow-lg shadow-sky-600/20 transition-all shrink-0">
             <i data-lucide="upload-cloud" class="w-4 h-4"></i> Upload Files
             <input type="file" id="file-upload-input" multiple onchange="handleFileUpload(event)" class="hidden">
           </label>
 
           <!-- Create Folder -->
-          <button onclick="openCreateFolderModal()" class="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold px-3.5 py-2.5 rounded-xl flex items-center gap-2 transition-all border border-slate-200 dark:border-slate-700">
+          <button onclick="openCreateFolderModal()" class="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold px-3 sm:px-3.5 py-2 sm:py-2.5 rounded-xl flex items-center gap-2 transition-all border border-slate-200 dark:border-slate-700 shrink-0">
             <i data-lucide="folder-plus" class="w-4 h-4"></i> New Folder
           </button>
 
           <!-- Refresh -->
-          <button id="file-refresh-button" onclick="refreshFileManager()" class="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 p-2.5 rounded-xl transition-all border border-slate-200 dark:border-slate-700 disabled:opacity-50 disabled:cursor-not-allowed" title="Refresh">
+          <button id="file-refresh-button" onclick="refreshFileManager()" class="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 p-2 sm:p-2.5 rounded-xl transition-all border border-slate-200 dark:border-slate-700 disabled:opacity-50 disabled:cursor-not-allowed shrink-0" title="Refresh">
             <i data-lucide="refresh-cw" class="w-4 h-4"></i>
           </button>
         </div>
 
         <!-- Bulk Action Buttons (Visible when items selected) -->
-        <div id="bulk-actions" class="hidden flex items-center gap-2">
+        <div id="bulk-actions" class="hidden flex flex-wrap items-center gap-2 min-w-0">
           <button onclick="handleBulkDelete()" class="bg-red-600/20 hover:bg-red-600 text-red-600 dark:text-red-400 hover:text-white text-xs font-semibold px-3 py-2 rounded-xl flex items-center gap-1.5 transition-all">
             <i data-lucide="trash-2" class="w-4 h-4"></i> Delete Selected (<span id="selected-count">0</span>)
           </button>
@@ -1012,13 +1142,13 @@ async function renderFileManagerTab(container) {
         </div>
 
         <!-- Search & View Toggle -->
-        <div class="flex items-center gap-2">
-          <div class="relative">
+        <div class="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end min-w-0">
+          <div class="relative flex-1 sm:flex-initial min-w-0">
             <i data-lucide="search" class="w-4 h-4 absolute left-3 top-2.5 text-slate-400"></i>
-            <input type="text" id="file-search-input" oninput="handleFileSearch(event)" placeholder="Search files..." class="pitch-input rounded-xl pl-9 pr-4 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-sky-500 w-48">
+            <input type="text" id="file-search-input" oninput="handleFileSearch(event)" placeholder="Search files..." class="w-full sm:w-48 pitch-input rounded-xl pl-9 pr-4 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-sky-500">
           </div>
 
-          <div class="flex bg-slate-100 dark:bg-slate-900 p-1 rounded-xl border border-slate-200 dark:border-slate-800" id="file-view-toggle-group">
+          <div class="flex bg-slate-100 dark:bg-slate-900 p-1 rounded-xl border border-slate-200 dark:border-slate-800 shrink-0" id="file-view-toggle-group">
             <button id="view-mode-grid-btn" onclick="setFileViewMode('grid')" class="p-1.5 rounded-lg transition-all ${AppState.viewMode === 'grid' ? 'bg-sky-600 text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}" title="Grid View">
               <i data-lucide="grid" class="w-4 h-4"></i>
             </button>
@@ -1061,7 +1191,7 @@ async function renderFileManagerTab(container) {
       </div>
 
       <!-- Breadcrumbs Path Navigator -->
-      <div id="file-breadcrumbs" class="flex items-center gap-1 text-xs text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-950/40 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800">
+      <div id="file-breadcrumbs" class="flex items-center gap-1 text-xs text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-950/40 px-3.5 sm:px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 overflow-x-auto whitespace-nowrap scrollbar-thin max-w-full">
         <!-- Rendered dynamically -->
       </div>
 
@@ -1088,12 +1218,20 @@ async function renderFileManagerTab(container) {
   updateFileRefreshButton();
   fetchFileList();
   loadUrlDownloadJobs();
+  if (isAdmin) {
+    loadAdminUserDirectoryDropdown();
+  }
+  if (window.lucide) lucide.createIcons();
 }
 
 async function fetchFileList({ clearSelection = true } = {}) {
   try {
     const cacheBust = Date.now();
-    const data = await apiRequest(`/files/list?path=${encodeURIComponent(AppState.currentPath)}&_=${cacheBust}`);
+    let url = `/files/list?path=${encodeURIComponent(AppState.currentPath)}&_=${cacheBust}`;
+    if (AppState.user && AppState.user.role === 'admin' && AppState.targetUserId) {
+      url += `&targetUserId=${encodeURIComponent(AppState.targetUserId)}`;
+    }
+    const data = await apiRequest(url);
     AppState.files = Array.isArray(data.files) ? data.files : [];
     if (clearSelection) AppState.selectedPaths = [];
     renderBreadcrumbs(data.currentPath || AppState.currentPath);
@@ -1485,7 +1623,7 @@ async function downloadSingleFile(filePath) {
     // for the ENTIRE large file before starting the download and can consume
     // huge amounts of RAM. A normal same-origin attachment URL lets Chromium
     // stream the file directly to its download manager immediately.
-    const downloadUrl = `/api/files/download?path=${encodeURIComponent(filePath)}&token=${encodeURIComponent(AppState.token)}`;
+    const downloadUrl = getEffectiveDownloadUrl(filePath);
     const frame = document.createElement('iframe');
     frame.style.position = 'fixed';
     frame.style.width = '1px';
@@ -1725,7 +1863,7 @@ async function openFilePreview(filePath) {
     if (!AppState.token) throw new Error('Your session has expired. Please log in again.');
 
     const fileName = filePath.split('/').filter(Boolean).pop() || 'Preview';
-    const previewUrl = `/api/files/preview?path=${encodeURIComponent(filePath)}&token=${encodeURIComponent(AppState.token)}&_=${Date.now()}`;
+    const previewUrl = getEffectivePreviewUrl(filePath, `&_=${Date.now()}`);
     const ext = fileName.includes('.') ? fileName.split('.').pop().toLowerCase() : '';
     const imageExts = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'avif'];
     const videoExts = ['mp4', 'webm', 'mkv', 'mov', 'avi', 'm4v', 'ogv'];
@@ -1764,9 +1902,9 @@ async function openFilePreview(filePath) {
       setupVideoPlayer(
         'file-preview-video',
         previewUrl,
-        `/api/files/preview-transcoded?path=${encodeURIComponent(filePath)}&token=${encodeURIComponent(AppState.token)}`,
-        `/api/files/preview-transcoded?path=${encodeURIComponent(filePath)}&token=${encodeURIComponent(AppState.token)}&safe=1`,
-        `/api/files/download?path=${encodeURIComponent(filePath)}&token=${encodeURIComponent(AppState.token)}`
+        getEffectiveTranscodedUrl(filePath),
+        getEffectiveTranscodedUrl(filePath, true),
+        getEffectiveDownloadUrl(filePath)
       );
     }
 
@@ -3189,6 +3327,7 @@ async function renderAdminPortalTab(container) {
         <button data-admin-subtab="download-monitor" onclick="switchAdminSubTab('download-monitor')" class="${getTabClass('download-monitor')}">URL Downloads</button>
         <button data-admin-subtab="ip-history" onclick="switchAdminSubTab('ip-history')" class="${getTabClass('ip-history')}">IP Tracking</button>
         <button data-admin-subtab="smtp" onclick="switchAdminSubTab('smtp')" class="${getTabClass('smtp')}">SMTP Config</button>
+        <button data-admin-subtab="email-templates" onclick="switchAdminSubTab('email-templates')" class="${getTabClass('email-templates')}">Email Templates</button>
         <button data-admin-subtab="details" onclick="switchAdminSubTab('details')" class="${getTabClass('details')}">Details</button>
         <button data-admin-subtab="settings" onclick="switchAdminSubTab('settings')" class="${getTabClass('settings')}">App Settings</button>
         <button data-admin-subtab="audit-logs" onclick="switchAdminSubTab('audit-logs')" class="${getTabClass('audit-logs')}">Audit Logs</button>
@@ -3279,7 +3418,7 @@ async function renderAdminSubTabContent() {
           <div class="glass-card rounded-2xl overflow-hidden border border-slate-800">
             <div class="admin-table-scroll"><div class="min-w-[1300px]">
               <div class="px-4 py-3 bg-slate-950/60 flex items-center text-xs font-semibold text-slate-400">
-                <span class="w-12">ID</span><span class="flex-1">User</span><span class="w-28">Role</span><span class="w-36">Storage</span><span class="w-36">Monthly Bandwidth</span><span class="w-32">Monthly Requests</span><span class="w-24 text-center">Status</span><span class="w-48 text-right">Actions</span>
+                <span class="w-12">ID</span><span class="flex-1">User</span><span class="w-28">Role</span><span class="w-36">Storage</span><span class="w-36">Monthly Bandwidth</span><span class="w-32">Monthly Requests</span><span class="w-24 text-center">Status</span><span class="w-56 text-right">Actions</span>
               </div>
               <div class="divide-y divide-slate-800/60">
                 ${users.map(u => {
@@ -3297,12 +3436,21 @@ async function renderAdminSubTabContent() {
                     <span class="w-36 ${u.isOverQuota ? 'text-red-400 font-bold' : 'text-slate-300'}">${formatBytes(u.realUsedBytes)} / ${formatBytes(u.storage_quota_bytes)}</span>
                     <span class="w-36 text-indigo-300">${u.bandwidthFormattedUsed} / ${u.bandwidthFormattedLimit}</span>
                     <span class="w-32 text-amber-300">${u.apiRequestsFormattedUsed} / ${u.apiRequestsFormattedLimit}</span>
-                    <span class="w-24 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${u.is_suspended ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'}">${u.is_suspended ? 'Suspended' : 'Active'}</span></span>
-                    <div class="w-48 text-right flex items-center justify-end gap-1">
+                    <span class="w-24 text-center">
+                      ${u.is_suspended 
+                        ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-500/20 text-red-400 border border-red-500/30 cursor-help" title="${u.suspension_reason ? 'Suspended: ' + escapeHtml(u.suspension_reason) : 'Suspended'}">Suspended</span>` 
+                        : `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Active</span>`
+                      }
+                    </span>
+                    <div class="w-56 text-right flex items-center justify-end gap-1">
+                      <button onclick="inspectUserDirectory('${u.id}', '${escapeHtml(u.username)}')" class="p-1.5 text-slate-400 hover:text-sky-400 rounded-lg" title="Browse / Inspect ${escapeHtml(u.username)}'s Directory"><i data-lucide="folder-open" class="w-4 h-4 text-sky-400"></i></button>
                       <button onclick="openEditUserModal('${u.id}')" class="p-1.5 text-slate-400 hover:text-sky-400 rounded-lg" title="Edit User & Quotas"><i data-lucide="pencil" class="w-4 h-4"></i></button>
                       <button onclick="resetUserUsagePrompt('${u.id}', '${escapeHtml(u.username)}')" class="p-1.5 text-slate-400 hover:text-emerald-400 rounded-lg" title="Reset Monthly Bandwidth & API Cycle"><i data-lucide="rotate-ccw" class="w-4 h-4"></i></button>
                       <button onclick="editUserQuotaPrompt('${u.id}', '${u.storage_quota_bytes}')" class="p-1.5 text-slate-400 hover:text-amber-400 rounded-lg" title="Edit Storage Quota"><i data-lucide="hard-drive" class="w-4 h-4"></i></button>
-                      <button onclick="toggleUserSuspend('${u.id}', ${u.is_suspended})" class="p-1.5 text-slate-400 hover:text-red-400 rounded-lg" title="Suspend/Unsuspend"><i data-lucide="${u.is_suspended ? 'check-circle' : 'ban'}" class="w-4 h-4"></i></button>
+                      ${!isSelf ? (u.is_suspended 
+                        ? `<button onclick="openUnsuspendUserModal('${u.id}', '${escapeHtml(u.username)}', '${escapeHtml(u.email)}', '${escapeHtml(u.name)}')" class="p-1.5 text-slate-400 hover:text-emerald-400 rounded-lg" title="Unsuspend / Reactivate User"><i data-lucide="check-circle" class="w-4 h-4 text-emerald-400"></i></button>`
+                        : `<button onclick="openSuspendUserModal('${u.id}', '${escapeHtml(u.username)}', '${escapeHtml(u.email)}', '${escapeHtml(u.name)}')" class="p-1.5 text-slate-400 hover:text-red-400 rounded-lg" title="Suspend User (with Reason & Auto Mail)"><i data-lucide="ban" class="w-4 h-4 text-red-400"></i></button>`
+                      ) : ''}
                       ${!isSelf ? `<button onclick="deleteUserPrompt('${u.id}', '${escapeHtml(u.username)}')" class="p-1.5 text-slate-400 hover:text-red-500 rounded-lg" title="Delete User"><i data-lucide="trash-2" class="w-4 h-4"></i></button>` : ''}
                     </div>
                   </div>`;
@@ -3384,6 +3532,43 @@ async function renderAdminSubTabContent() {
             <div class="flex flex-wrap gap-2 pt-2"><button type="submit" class="bg-amber-600 text-white font-bold px-4 py-2 rounded-lg">Save Settings</button><button type="button" onclick="testSmtpPrompt()" class="bg-slate-800 text-slate-300 font-bold px-4 py-2 rounded-lg">Send Test Email</button></div>
           </form>
         </div>`;
+    } else if (AppState.adminTab === 'email-templates') {
+      const templates = await apiRequest('/admin/email-templates');
+      area.innerHTML = `
+        <div class="space-y-4">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 class="text-sm font-bold text-white">Email Notification Templates</h3>
+              <p class="text-xs text-slate-500 mt-1">Manage automated emails for account suspensions, reactivations, welcome messages, and security notices.</p>
+            </div>
+            <button onclick="renderAdminSubTabContent()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5">
+              <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Refresh
+            </button>
+          </div>
+          <div class="grid md:grid-cols-2 gap-4">
+            ${templates.map(t => {
+              const isSuspendTpl = t.slug === 'user_suspended';
+              const isUnsuspendTpl = t.slug === 'user_unsuspended';
+              const badgeClass = isSuspendTpl ? 'bg-red-500/20 text-red-400 border-red-500/30' : isUnsuspendTpl ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-sky-500/20 text-sky-400 border-sky-500/30';
+              return `
+              <div class="glass-card p-5 rounded-2xl border border-slate-800 flex flex-col justify-between gap-4">
+                <div>
+                  <div class="flex items-center justify-between gap-2 mb-2">
+                    <span class="font-bold text-sm text-white">${escapeHtml(t.name)}</span>
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold border ${badgeClass}">${escapeHtml(t.slug)}</span>
+                  </div>
+                  <div class="text-xs text-slate-400 mb-1"><strong>Subject:</strong> <span class="text-slate-200">${escapeHtml(t.subject)}</span></div>
+                </div>
+                <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-800/60">
+                  <button onclick="openEditEmailTemplateModal('${escapeHtml(t.slug)}')" class="bg-slate-800 hover:bg-slate-700 text-sky-400 hover:text-sky-300 px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors">
+                    <i data-lucide="edit-3" class="w-3.5 h-3.5"></i> Edit Template
+                  </button>
+                </div>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>
+      `;
     } else if (AppState.adminTab === 'settings') {
       const settings = await apiRequest('/admin/settings');
       const enabled = String(settings.anti_multi_account_enabled) === 'true';
@@ -3523,6 +3708,7 @@ async function handleSaveAppSettings(e) {
 }
 
 function renderTerminalConsole(container) {
+  const currentMode = activeTerminalMode;
   container.innerHTML = `
     <div class="glass-card p-5 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
       <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-3">
@@ -3535,7 +3721,20 @@ function renderTerminalConsole(container) {
             <p class="text-xs text-slate-500 dark:text-slate-400">Interactive live bash shell for administrative server control.</p>
           </div>
         </div>
-        <div class="flex items-center gap-3">
+        <div class="flex flex-wrap items-center gap-3">
+          <!-- Connection Mode Switcher -->
+          <div class="flex items-center bg-slate-100 dark:bg-slate-900/80 p-1 rounded-xl border border-slate-200 dark:border-slate-800 text-xs">
+            <button onclick="setConsoleTerminalMode('auto')" class="px-2.5 py-1 rounded-lg font-semibold transition-all ${currentMode === 'auto' ? 'bg-sky-600 text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-white'}" title="Auto: Tries WebSocket, falls back instantly to HTTP Stream if blocked">
+              Auto (WS + Fallback)
+            </button>
+            <button onclick="setConsoleTerminalMode('http')" class="px-2.5 py-1 rounded-lg font-semibold transition-all ${currentMode === 'http' ? 'bg-sky-600 text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-white'}" title="HTTP Stream: Reliable streaming through Cloudflare & restrictive reverse proxies">
+              HTTP Stream
+            </button>
+            <button onclick="setConsoleTerminalMode('ws')" class="px-2.5 py-1 rounded-lg font-semibold transition-all ${currentMode === 'ws' ? 'bg-sky-600 text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-white'}" title="WebSocket: Pure low-latency WebSocket connection">
+              WebSocket
+            </button>
+          </div>
+
           <span id="terminal-status-badge" class="text-xs text-amber-500 font-mono flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/20">
             <span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span> Connecting...
           </span>
@@ -3547,6 +3746,41 @@ function renderTerminalConsole(container) {
 
       <!-- Xterm Terminal Wrapper Container -->
       <div id="terminal-container" class="w-full h-[460px] bg-black rounded-xl p-3 border border-slate-800 overflow-hidden shadow-2xl"></div>
+
+      <!-- VPS Troubleshooting Helper Card -->
+      <div class="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 p-3.5">
+        <details class="group">
+          <summary class="flex items-center justify-between cursor-pointer list-none text-xs font-bold text-slate-700 dark:text-slate-300">
+            <span class="flex items-center gap-2">
+              <i data-lucide="help-circle" class="w-4 h-4 text-sky-400"></i>
+              VPS Deployment Notice: Solving "WebSocket Disconnected" on Custom Domains (Nginx / Cloudflare)
+            </span>
+            <span class="transition group-open:rotate-180 text-slate-400">▾</span>
+          </summary>
+          <div class="mt-3 text-xs text-slate-600 dark:text-slate-400 space-y-2 leading-relaxed border-t border-slate-200 dark:border-slate-800 pt-3">
+            <p>
+              If your VPS console showed <span class="font-mono text-red-400">WebSocket Error</span>, Zenstorage now <b>automatically falls back to HTTP Streaming</b> so you can use the interactive shell right away!
+            </p>
+            <p>
+              To enable high-speed direct <b>WebSockets</b> on your VPS Nginx reverse proxy:
+            </p>
+            <pre class="bg-slate-900 text-slate-200 p-3 rounded-lg overflow-x-auto text-[11px] font-mono border border-slate-800">
+# In /etc/nginx/sites-available/vps-storage:
+location /api/admin/console {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_read_timeout 86400s;
+}
+            </pre>
+            <p class="text-[11px] text-slate-500">
+              <b>Cloudflare tip:</b> If your domain (e.g. <code>storage.zendevelopment.in</code>) uses Cloudflare proxy, verify that <b>WebSockets</b> is enabled in your Cloudflare dashboard under <i>Network → WebSockets</i> (enabled by default on all Cloudflare accounts).
+            </p>
+          </div>
+        </details>
+      </div>
     </div>
   `;
 
@@ -3560,17 +3794,158 @@ function renderTerminalConsole(container) {
 let activeTerminalSocket = null;
 let activeTerminalInstance = null;
 let activeFitAddon = null;
+let activeHttpConsoleAbort = null;
+let activeHttpConsoleSessionId = null;
+let activeTerminalMode = localStorage.getItem('zen_console_mode') || 'auto'; // 'auto', 'ws', 'http'
+
+function setConsoleTerminalMode(mode) {
+  activeTerminalMode = mode;
+  localStorage.setItem('zen_console_mode', mode);
+  const area = document.getElementById('tab-content-area');
+  if (area && AppState.adminTab === 'console') {
+    renderTerminalConsole(area);
+  } else {
+    initXtermTerminal();
+  }
+}
+
+async function startHttpConsoleSession(term, badge, applyFit) {
+  if (activeHttpConsoleAbort) {
+    try { activeHttpConsoleAbort.abort(); } catch (_) {}
+    activeHttpConsoleAbort = null;
+  }
+  if (activeHttpConsoleSessionId) {
+    const sId = activeHttpConsoleSessionId;
+    activeHttpConsoleSessionId = null;
+    apiRequest('/admin/console/close', { method: 'POST', body: { sessionId: sId } }).catch(() => {});
+  }
+
+  if (badge) {
+    badge.className = 'text-xs text-amber-500 font-mono flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/20';
+    badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span> Connecting via HTTP Stream...';
+  }
+
+  const abortController = new AbortController();
+  activeHttpConsoleAbort = abortController;
+
+  try {
+    term.write('\r\n\x1b[36m[Connecting via Interactive HTTP Streaming Shell...]\x1b[0m\r\n');
+    const token = AppState.token || '';
+    const res = await fetch(`/api/admin/console/stream?token=${encodeURIComponent(token)}`, {
+      signal: abortController.signal,
+      cache: 'no-store'
+    });
+
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.error || `HTTP ${res.status} ${res.statusText}`);
+    }
+
+    let sessionId = res.headers.get('X-Console-Session-Id');
+
+    if (badge) {
+      badge.className = 'text-xs text-emerald-500 font-mono flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20';
+      badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-500"></span> Live SSH (HTTP Stream)';
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+
+    // Attach keyboard listener
+    term.onData(async (data) => {
+      if (!activeHttpConsoleSessionId) return;
+      try {
+        await fetch('/api/admin/console/input', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${AppState.token}`
+          },
+          body: JSON.stringify({ sessionId: activeHttpConsoleSessionId, data })
+        });
+      } catch (err) {
+        console.warn('Console input write error:', err);
+      }
+    });
+
+    // Attach resize listener
+    term.onResize(async ({ cols, rows }) => {
+      if (!activeHttpConsoleSessionId) return;
+      try {
+        await fetch('/api/admin/console/resize', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${AppState.token}`
+          },
+          body: JSON.stringify({ sessionId: activeHttpConsoleSessionId, cols, rows })
+        });
+      } catch (_) {}
+    });
+
+    applyFit();
+    term.focus();
+
+    // Stream reading loop
+    let isFirstChunk = true;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      let text = decoder.decode(value, { stream: true });
+      if (isFirstChunk) {
+        isFirstChunk = false;
+        const match = text.match(/\[SESSION_ID:([a-f0-9]+)\]\r?\n?/);
+        if (match) {
+          sessionId = match[1];
+          text = text.replace(/\[SESSION_ID:[a-f0-9]+\]\r?\n?/, '');
+        }
+        activeHttpConsoleSessionId = sessionId;
+        if (term.cols && term.rows) {
+          fetch('/api/admin/console/resize', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${AppState.token}` },
+            body: JSON.stringify({ sessionId, cols: term.cols, rows: term.rows })
+          }).catch(() => {});
+        }
+      }
+      if (text) term.write(text);
+    }
+
+    if (badge) {
+      badge.className = 'text-xs text-slate-400 font-mono flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-500/10 border border-slate-500/20';
+      badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-slate-500"></span> Session Ended';
+    }
+  } catch (err) {
+    if (err.name === 'AbortError') return;
+    if (badge) {
+      badge.className = 'text-xs text-red-500 font-mono flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-500/10 border border-red-500/20';
+      badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-red-500"></span> Disconnected';
+    }
+    term.write(`\r\n\x1b[31m[HTTP Stream Connection Error: ${err.message}]\x1b[0m\r\n`);
+  }
+}
 
 function initXtermTerminal() {
   const container = document.getElementById('terminal-container');
   const badge = document.getElementById('terminal-status-badge');
   if (!container) return;
 
-  // Cleanup existing session if open
+  // Cleanup existing socket session if open
   if (activeTerminalSocket) {
     try { activeTerminalSocket.close(); } catch (e) {}
     activeTerminalSocket = null;
   }
+  // Cleanup existing HTTP session if open
+  if (activeHttpConsoleAbort) {
+    try { activeHttpConsoleAbort.abort(); } catch (_) {}
+    activeHttpConsoleAbort = null;
+  }
+  if (activeHttpConsoleSessionId) {
+    const sId = activeHttpConsoleSessionId;
+    activeHttpConsoleSessionId = null;
+    apiRequest('/admin/console/close', { method: 'POST', body: { sessionId: sId } }).catch(() => {});
+  }
+
   if (activeTerminalInstance) {
     try { activeTerminalInstance.dispose(); } catch (e) {}
     activeTerminalInstance = null;
@@ -3658,23 +4033,43 @@ function initXtermTerminal() {
   container.addEventListener('click', () => {
     term.focus();
   });
+  window.addEventListener('resize', applyFit);
 
+  // If user selected Force HTTP Stream mode, jump straight to HTTP stream session
+  if (activeTerminalMode === 'http') {
+    startHttpConsoleSession(term, badge, applyFit);
+    return;
+  }
+
+  // Otherwise, attempt WebSocket (with auto-fallback to HTTP stream if mode is 'auto')
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const wsUrl = `${protocol}//${window.location.host}/api/admin/console?token=${encodeURIComponent(AppState.token || '')}`;
 
   if (badge) {
     badge.className = 'text-xs text-amber-500 font-mono flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/20';
-    badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span> Connecting...';
+    badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span> Connecting via WebSocket...';
   }
+
+  let wsOpened = false;
+  let connectionTimeout = setTimeout(() => {
+    if (!wsOpened && activeTerminalMode === 'auto') {
+      try { if (activeTerminalSocket) activeTerminalSocket.close(); } catch (_) {}
+      activeTerminalSocket = null;
+      term.write('\r\n\x1b[33m[Notice: WebSocket handshake timed out on VPS. Switching to HTTP Stream console...]\x1b[0m\r\n');
+      startHttpConsoleSession(term, badge, applyFit);
+    }
+  }, 3500);
 
   try {
     const ws = new WebSocket(wsUrl);
     activeTerminalSocket = ws;
 
     ws.onopen = () => {
+      wsOpened = true;
+      clearTimeout(connectionTimeout);
       if (badge) {
         badge.className = 'text-xs text-emerald-500 font-mono flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20';
-        badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-500"></span> Live SSH Connected';
+        badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-500"></span> Live SSH (WebSocket)';
       }
       applyFit();
       term.focus();
@@ -3695,15 +4090,26 @@ function initXtermTerminal() {
     };
 
     ws.onerror = () => {
+      clearTimeout(connectionTimeout);
+      if (activeTerminalMode === 'auto' && !wsOpened) {
+        try { ws.close(); } catch (_) {}
+        activeTerminalSocket = null;
+        term.write('\r\n\x1b[33m[Notice: WebSocket blocked by reverse proxy or Cloudflare. Auto-switching to HTTP Stream console...]\x1b[0m\r\n');
+        startHttpConsoleSession(term, badge, applyFit);
+        return;
+      }
+
       if (badge) {
         badge.className = 'text-xs text-red-500 font-mono flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-500/10 border border-red-500/20';
         badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-red-500"></span> Disconnected';
       }
       term.write('\r\n\x1b[31m[WebSocket Error: Unable to establish live terminal connection]\x1b[0m\r\n');
+      term.write('\x1b[36mTip: Click the "HTTP Stream" button above to connect immediately without WebSockets!\x1b[0m\r\n');
     };
 
     ws.onclose = () => {
-      if (badge) {
+      clearTimeout(connectionTimeout);
+      if (badge && wsOpened) {
         badge.className = 'text-xs text-slate-400 font-mono flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-500/10 border border-slate-500/20';
         badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-slate-500"></span> Session Closed';
       }
@@ -3721,13 +4127,18 @@ function initXtermTerminal() {
       }
     });
 
-    window.addEventListener('resize', applyFit);
   } catch (err) {
-    if (badge) {
-      badge.className = 'text-xs text-red-500 font-mono flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-500/10 border border-red-500/20';
-      badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-red-500"></span> Error';
+    clearTimeout(connectionTimeout);
+    if (activeTerminalMode === 'auto') {
+      term.write(`\r\n\x1b[33m[WebSocket init error: ${err.message}. Switching to HTTP Stream console...]\x1b[0m\r\n`);
+      startHttpConsoleSession(term, badge, applyFit);
+    } else {
+      if (badge) {
+        badge.className = 'text-xs text-red-500 font-mono flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-500/10 border border-red-500/20';
+        badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-red-500"></span> Error';
+      }
+      term.write(`\r\n\x1b[31mFailed to initialize WebSocket: ${err.message}\x1b[0m\r\n`);
     }
-    term.write(`\r\n\x1b[31mFailed to initialize WebSocket: ${err.message}\x1b[0m\r\n`);
   }
 }
 
@@ -3901,15 +4312,280 @@ function editUserQuotaPrompt(userId, currentQuota) {
 }
 
 function toggleUserSuspend(userId, currentStatus) {
-  apiRequest(`/admin/users/${userId}`, {
-    method: 'PUT',
-    body: { isSuspended: !currentStatus }
-  })
-  .then(() => {
-    showToast('User status updated!', 'success');
-    renderAdminSubTabContent();
-  })
-  .catch(err => showToast(err.message, 'error'));
+  const user = (AppState.adminUsers || []).find(u => Number(u.id) === Number(userId));
+  if (!user) return showToast('User not found.', 'error');
+
+  if (currentStatus) {
+    openUnsuspendUserModal(user.id, user.username, user.email, user.name);
+  } else {
+    openSuspendUserModal(user.id, user.username, user.email, user.name);
+  }
+}
+
+function openSuspendUserModal(userId, username, email, name) {
+  document.getElementById('suspend-user-modal')?.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'suspend-user-modal';
+  modal.className = 'fixed inset-0 z-[60] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4';
+  modal.innerHTML = `
+    <div class="w-full max-w-lg glass-card rounded-2xl border border-red-500/30 shadow-2xl p-6 space-y-4">
+      <div class="flex items-start justify-between gap-3">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-red-500/15 border border-red-500/30 flex items-center justify-center text-red-400 shrink-0">
+            <i data-lucide="ban" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-white">Suspend User Account</h3>
+            <p class="text-xs text-slate-400 mt-0.5">Restrict user access and dispatch automated suspension email.</p>
+          </div>
+        </div>
+        <button type="button" onclick="document.getElementById('suspend-user-modal')?.remove()" class="text-slate-400 hover:text-white p-1">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Target User Info -->
+      <div class="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 text-xs space-y-1">
+        <div class="flex justify-between text-slate-300">
+          <span class="text-slate-500">User:</span>
+          <span class="font-bold text-white">${escapeHtml(name)} (@${escapeHtml(username)})</span>
+        </div>
+        <div class="flex justify-between text-slate-300">
+          <span class="text-slate-500">Email Address:</span>
+          <span class="font-mono text-cyan-300">${escapeHtml(email)}</span>
+        </div>
+      </div>
+
+      <form onsubmit="handleSuspendUserSubmit(event, ${Number(userId)}, '${escapeHtml(username)}')" class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold uppercase text-slate-300 mb-1.5">
+            Reason for Suspension <span class="text-red-400">*</span>
+          </label>
+          <textarea id="suspend-reason-input" required rows="3" class="w-full bg-slate-950 border border-slate-800 focus:border-red-500 focus:ring-1 focus:ring-red-500 rounded-xl p-3 text-xs text-white placeholder-slate-500 outline-none resize-none" placeholder="Enter specific reason for suspension (e.g., Excessive storage overage, Terms of Service violation, suspicious activity)..."></textarea>
+          <p class="text-[11px] text-slate-400 mt-1">This reason is recorded in audit logs and immediately sent to the user in their suspension email.</p>
+        </div>
+
+        <div class="p-3 rounded-xl bg-red-950/30 border border-red-500/20 flex items-start gap-2.5 text-xs text-red-200">
+          <i data-lucide="mail" class="w-4 h-4 text-red-400 shrink-0 mt-0.5"></i>
+          <span>An automated SMTP suspension notification will be emailed to <strong>${escapeHtml(email)}</strong> with the reason provided above.</span>
+        </div>
+
+        <div class="flex items-center justify-end gap-2.5 pt-2">
+          <button type="button" onclick="document.getElementById('suspend-user-modal')?.remove()" class="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-colors">
+            Cancel
+          </button>
+          <button type="submit" id="btn-submit-suspend" class="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold shadow-lg shadow-red-600/30 flex items-center gap-2 transition-all">
+            <i data-lucide="ban" class="w-4 h-4"></i> Suspend User & Send Mail
+          </button>
+        </div>
+      </form>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+  if (window.lucide) lucide.createIcons();
+  setTimeout(() => document.getElementById('suspend-reason-input')?.focus(), 50);
+}
+
+async function handleSuspendUserSubmit(e, userId, username) {
+  e.preventDefault();
+  const reason = document.getElementById('suspend-reason-input')?.value.trim();
+  if (!reason) return showToast('Please enter a suspension reason.', 'error');
+
+  const submitBtn = document.getElementById('btn-submit-suspend');
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Suspending...';
+    if (window.lucide) lucide.createIcons();
+  }
+
+  try {
+    const res = await apiRequest(`/admin/users/${userId}/suspend`, {
+      method: 'POST',
+      body: { reason }
+    });
+    document.getElementById('suspend-user-modal')?.remove();
+    showToast(res.message || `User @${username} suspended and email sent!`, 'success');
+    await renderAdminSubTabContent();
+  } catch (err) {
+    showToast(err.message || 'Failed to suspend user.', 'error');
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '<i data-lucide="ban" class="w-4 h-4"></i> Suspend User & Send Mail';
+      if (window.lucide) lucide.createIcons();
+    }
+  }
+}
+
+function openUnsuspendUserModal(userId, username, email, name) {
+  document.getElementById('unsuspend-user-modal')?.remove();
+
+  const user = (AppState.adminUsers || []).find(u => Number(u.id) === Number(userId));
+  const priorReason = user?.suspension_reason || '';
+
+  const modal = document.createElement('div');
+  modal.id = 'unsuspend-user-modal';
+  modal.className = 'fixed inset-0 z-[60] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4';
+  modal.innerHTML = `
+    <div class="w-full max-w-lg glass-card rounded-2xl border border-emerald-500/30 shadow-2xl p-6 space-y-4">
+      <div class="flex items-start justify-between gap-3">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+            <i data-lucide="check-circle" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-white">Reactivate User Account</h3>
+            <p class="text-xs text-slate-400 mt-0.5">Lift suspension and dispatch automated reactivation email.</p>
+          </div>
+        </div>
+        <button type="button" onclick="document.getElementById('unsuspend-user-modal')?.remove()" class="text-slate-400 hover:text-white p-1">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Target User Info -->
+      <div class="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 text-xs space-y-1">
+        <div class="flex justify-between text-slate-300">
+          <span class="text-slate-500">User:</span>
+          <span class="font-bold text-white">${escapeHtml(name)} (@${escapeHtml(username)})</span>
+        </div>
+        <div class="flex justify-between text-slate-300">
+          <span class="text-slate-500">Email Address:</span>
+          <span class="font-mono text-cyan-300">${escapeHtml(email)}</span>
+        </div>
+        ${priorReason ? `
+        <div class="pt-1 border-t border-slate-800/80 text-[11px] text-amber-300">
+          <span class="text-slate-500">Previous Suspension Reason:</span> ${escapeHtml(priorReason)}
+        </div>` : ''}
+      </div>
+
+      <form onsubmit="handleUnsuspendUserSubmit(event, ${Number(userId)}, '${escapeHtml(username)}')" class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold uppercase text-slate-300 mb-1.5">
+            Reactivation Message / Note
+          </label>
+          <textarea id="unsuspend-reason-input" rows="3" class="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-xl p-3 text-xs text-white placeholder-slate-500 outline-none resize-none" placeholder="Optional message included in the reactivation email...">Your account suspension has been lifted and access has been restored.</textarea>
+          <p class="text-[11px] text-slate-400 mt-1">This message will be included in the automated reactivation email sent to the user.</p>
+        </div>
+
+        <div class="p-3 rounded-xl bg-emerald-950/30 border border-emerald-500/20 flex items-start gap-2.5 text-xs text-emerald-200">
+          <i data-lucide="mail" class="w-4 h-4 text-emerald-400 shrink-0 mt-0.5"></i>
+          <span>An automated SMTP reactivation notification will be emailed to <strong>${escapeHtml(email)}</strong> with the login link.</span>
+        </div>
+
+        <div class="flex items-center justify-end gap-2.5 pt-2">
+          <button type="button" onclick="document.getElementById('unsuspend-user-modal')?.remove()" class="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-colors">
+            Cancel
+          </button>
+          <button type="submit" id="btn-submit-unsuspend" class="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-600/30 flex items-center gap-2 transition-all">
+            <i data-lucide="check-circle" class="w-4 h-4"></i> Reactivate & Send Mail
+          </button>
+        </div>
+      </form>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+  if (window.lucide) lucide.createIcons();
+  setTimeout(() => document.getElementById('unsuspend-reason-input')?.focus(), 50);
+}
+
+async function handleUnsuspendUserSubmit(e, userId, username) {
+  e.preventDefault();
+  const reason = document.getElementById('unsuspend-reason-input')?.value.trim() || 'Your account suspension has been lifted and access has been restored.';
+
+  const submitBtn = document.getElementById('btn-submit-unsuspend');
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Reactivating...';
+    if (window.lucide) lucide.createIcons();
+  }
+
+  try {
+    const res = await apiRequest(`/admin/users/${userId}/unsuspend`, {
+      method: 'POST',
+      body: { reason }
+    });
+    document.getElementById('unsuspend-user-modal')?.remove();
+    showToast(res.message || `User @${username} reactivated and email sent!`, 'success');
+    await renderAdminSubTabContent();
+  } catch (err) {
+    showToast(err.message || 'Failed to unsuspend user.', 'error');
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '<i data-lucide="check-circle" class="w-4 h-4"></i> Reactivate & Send Mail';
+      if (window.lucide) lucide.createIcons();
+    }
+  }
+}
+
+async function openEditEmailTemplateModal(slug) {
+  try {
+    const templates = await apiRequest('/admin/email-templates');
+    const tpl = templates.find(t => t.slug === slug);
+    if (!tpl) return showToast('Template not found.', 'error');
+
+    document.getElementById('edit-template-modal')?.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'edit-template-modal';
+    modal.className = 'fixed inset-0 z-[60] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4';
+    modal.innerHTML = `
+      <div class="w-full max-w-2xl glass-card rounded-2xl border border-slate-700 shadow-2xl p-6 max-h-[90vh] overflow-y-auto space-y-4">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div>
+            <h3 class="text-base font-bold text-white">Edit Email Template</h3>
+            <p class="text-xs text-slate-400 mt-0.5">${escapeHtml(tpl.name)} (<code>${escapeHtml(tpl.slug)}</code>)</p>
+          </div>
+          <button type="button" onclick="document.getElementById('edit-template-modal')?.remove()" class="text-slate-400 hover:text-white p-1">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+
+        <form onsubmit="handleSaveEmailTemplate(event, '${escapeHtml(tpl.slug)}')" class="space-y-4">
+          <div>
+            <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Subject Line</label>
+            <input type="text" id="tpl-subject" value="${escapeHtml(tpl.subject)}" required class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500">
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">HTML Body</label>
+            <textarea id="tpl-body" rows="12" required class="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 font-mono text-xs text-white focus:outline-none focus:border-sky-500 leading-relaxed">${escapeHtml(tpl.body_html)}</textarea>
+            <p class="text-[11px] text-slate-500 mt-1">Available placeholders: <code>{{name}}</code>, <code>{{username}}</code>, <code>{{reason}}</code>, <code>{{suspended_at}}</code>, <code>{{reactivated_at}}</code>, <code>{{login_url}}</code>, <code>{{app_name}}</code></p>
+          </div>
+
+          <div class="flex justify-end gap-2 pt-2 border-t border-slate-800">
+            <button type="button" onclick="document.getElementById('edit-template-modal')?.remove()" class="px-4 py-2.5 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold">Cancel</button>
+            <button type="submit" class="px-5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold">Save Template</button>
+          </div>
+        </form>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+    if (window.lucide) lucide.createIcons();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function handleSaveEmailTemplate(e, slug) {
+  e.preventDefault();
+  const subject = document.getElementById('tpl-subject')?.value.trim();
+  const body_html = document.getElementById('tpl-body')?.value;
+
+  try {
+    await apiRequest(`/admin/email-templates/${slug}`, {
+      method: 'PUT',
+      body: { subject, body_html }
+    });
+    document.getElementById('edit-template-modal')?.remove();
+    showToast('Email template updated successfully.', 'success');
+    await renderAdminSubTabContent();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
 }
 
 async function handleSaveAdminDetails(e) {

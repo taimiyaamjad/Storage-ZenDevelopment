@@ -100,6 +100,60 @@ class EmailService {
 
     return info;
   }
+
+  /**
+   * Send Account Suspended Notification
+   */
+  static async sendUserSuspendedEmail(user, reason) {
+    try {
+      const appSettings = await getAll('SELECT key, value FROM app_settings;');
+      const settingsMap = {};
+      for (const s of appSettings) settingsMap[s.key] = s.value;
+
+      const appName = settingsMap.app_name || 'ZenStorage';
+      const contactEmail = settingsMap.contact_email || '';
+      const dateFormatted = new Date().toUTCString();
+
+      return await this.sendTemplatedEmail('user_suspended', user.email, {
+        name: user.name || user.username,
+        username: user.username,
+        reason: reason || 'Administrative decision / policy violation.',
+        suspended_at: dateFormatted,
+        contact_info: contactEmail,
+        app_name: appName
+      });
+    } catch (err) {
+      console.error('Error in sendUserSuspendedEmail:', err);
+      return false;
+    }
+  }
+
+  /**
+   * Send Account Reactivated Notification
+   */
+  static async sendUserUnsuspendedEmail(user, reason) {
+    try {
+      const appSettings = await getAll('SELECT key, value FROM app_settings;');
+      const settingsMap = {};
+      for (const s of appSettings) settingsMap[s.key] = s.value;
+
+      const appName = settingsMap.app_name || 'ZenStorage';
+      const appUrl = settingsMap.app_url || 'http://storage.zendevelopment.in';
+      const dateFormatted = new Date().toUTCString();
+
+      return await this.sendTemplatedEmail('user_unsuspended', user.email, {
+        name: user.name || user.username,
+        username: user.username,
+        reason: reason || 'Your account suspension has been lifted and access has been restored.',
+        reactivated_at: dateFormatted,
+        login_url: `${appUrl}/#login`,
+        app_name: appName
+      });
+    } catch (err) {
+      console.error('Error in sendUserUnsuspendedEmail:', err);
+      return false;
+    }
+  }
 }
 
 module.exports = EmailService;

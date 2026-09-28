@@ -221,6 +221,8 @@ echo -e "${GREEN}Created .env with secure random keys.${NC}"
 echo -e "${BLUE}==> [5/7] Installing npm dependencies & preparing sqlite3...${NC}"
 npm install --production --no-audit --no-fund
 npm rebuild sqlite3 2>/dev/null || true
+chmod +x "$INSTALL_DIR/src/services/ptyBridge.py" 2>/dev/null || true
+chmod 755 "$INSTALL_DIR" 2>/dev/null || true
 
 echo -e "${BLUE}==> [6/7] Creating Systemd background service...${NC}"
 NODE_BIN=$(command -v node || echo "/usr/bin/node")
@@ -254,6 +256,14 @@ echo -e "${GREEN}Systemd service 'vps-storage' created and started.${NC}"
 # 7. Nginx Setup
 if [[ ! "$SETUP_NGINX" =~ ^[Nn] ]]; then
   echo -e "${BLUE}==> [7/7] Configuring Nginx Reverse Proxy & WebSocket support...${NC}"
+  # Ensure websocket connection upgrade map is available in nginx http context
+  cat > /etc/nginx/conf.d/websocket_upgrade.conf << 'MAP_EOL'
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    '' close;
+}
+MAP_EOL
+
   NGINX_CONF="/etc/nginx/sites-available/vps-storage"
   cat > "$NGINX_CONF" <<EOL
 server {
@@ -262,17 +272,34 @@ server {
 
     client_max_body_size 0;
 
-    location / {
+    # Dedicated WebSocket Upgrade block for VPS SSH Console
+    location /api/admin/console {
         proxy_pass http://127.0.0.1:${APP_PORT};
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+        proxy_read_timeout 86400s;
+        proxy_send_timeout 86400s;
+        proxy_buffering off;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:${APP_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection \$connection_upgrade;
         proxy_set_header Host \$host;
         proxy_cache_bypass \$http_upgrade;
 
         proxy_buffering off;
         proxy_request_buffering off;
         proxy_force_ranges on;
+        proxy_read_timeout 86400s;
+        proxy_send_timeout 86400s;
 
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
