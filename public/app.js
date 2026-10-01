@@ -240,7 +240,7 @@ function renderApp() {
   if (!root) return;
 
   // Check Hash for Public Share or Password Reset links
-  const hash = window.location.hash;
+  const hash = window.location.hash || '';
   if (hash.startsWith('#public-share')) {
     renderPublicShareView(root);
     return;
@@ -257,9 +257,21 @@ function renderApp() {
     renderVerifyEmailChangeView(root);
     return;
   }
-  if (hash.startsWith('#otp-verification') || AppState.otpSessionData || (AppState.user && AppState.user.requires_otp_verification)) {
+
+  // OTP Verification view should ONLY be rendered if there is an active OTP pending for the user:
+  const userNeedsOtp = (AppState.user && Number(AppState.user.requires_otp_verification) === 1) ||
+                       (AppState.otpSessionData && (AppState.otpSessionData.requiresOtp || AppState.otpSessionData.tempToken));
+
+  if (userNeedsOtp) {
     renderOtpVerificationView(root);
     return;
+  } else if (hash.startsWith('#otp-verification')) {
+    // If URL has #otp-verification but user is already verified / does not need OTP, clear the stale hash
+    if (window.history && window.history.replaceState) {
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    } else {
+      window.location.hash = '';
+    }
   }
 
   if (!AppState.token || !AppState.user) {
@@ -523,18 +535,22 @@ async function triggerOtpVerificationSubmit() {
 
     // Update global state with active session
     AppState.token = data.token;
-    AppState.user = data.user;
+    AppState.user = { ...data.user, requires_otp_verification: 0, is_suspicious: 0 };
     AppState.otpSessionData = null;
     AppState.currentTab = 'dashboard';
     localStorage.setItem('vps_token', data.token);
-    localStorage.setItem('vps_user', JSON.stringify(data.user));
+    localStorage.setItem('vps_user', JSON.stringify(AppState.user));
 
     showToast('Identity verified successfully! Welcome to ZenCloud.', 'success');
 
     // Smooth transition to Dashboard
     setTimeout(() => {
       isOtpVerifying = false;
-      window.location.hash = '';
+      if (window.history && window.history.replaceState) {
+        window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      } else {
+        window.location.hash = '';
+      }
       renderApp();
     }, 950);
 
@@ -644,9 +660,12 @@ async function handleOtpResend() {
 
 function cancelOtpAndLogout() {
   AppState.otpSessionData = null;
+  if (window.history && window.history.replaceState) {
+    window.history.replaceState(null, '', window.location.pathname + window.location.search);
+  } else {
+    window.location.hash = '';
+  }
   logoutUser();
-  window.location.hash = '';
-  renderApp();
 }
 
 async function renderPublicShareView(root) {
@@ -1103,7 +1122,7 @@ function renderAuthView(container) {
           <div class="space-y-4">
             <div>
               <label class="block text-xs font-semibold uppercase text-slate-500 dark:text-slate-400 mb-1">Username or Email</label>
-              <input type="text" id="login-input-user" required class="w-full pitch-input rounded-xl px-4 py-2.5 text-sm focus:outline-none" placeholder="admin or user@domain.com">
+              <input type="text" id="login-input-user" required class="w-full pitch-input rounded-xl px-4 py-2.5 text-sm focus:outline-none" placeholder="Username or email address">
             </div>
 
             <div>
@@ -1111,8 +1130,7 @@ function renderAuthView(container) {
               <input type="password" id="login-input-pass" required class="w-full pitch-input rounded-xl px-4 py-2.5 text-sm focus:outline-none" placeholder="••••••••">
             </div>
 
-            <div class="flex justify-between items-center text-xs">
-              <span class="text-slate-400 text-[11px]">Default: admin / Admin@123456</span>
+            <div class="flex justify-end items-center text-xs">
               <button type="button" onclick="openForgotPasswordModal()" class="text-slate-600 dark:text-slate-300 hover:text-black dark:hover:text-white underline">Forgot password?</button>
             </div>
 
@@ -6388,5 +6406,37 @@ function testSmtpPrompt() {
 // Initial Boot Call
 window.addEventListener('DOMContentLoaded', async () => {
   await loadPublicBranding();
+
+  // If user has an active token, validate session and sync profile
+  if (AppState.token) {
+    try {
+      const profileData = await apiRequest('/auth/profile');
+      if (profileData && profileData.user) {
+        AppState.user = profileData.user;
+        localStorage.setItem('vps_user', JSON.stringify(profileData.user));
+        
+        // If user is verified and does not require OTP, ensure OTP sessions and hashes are cleared
+        if (!profileData.user.requires_otp_verification) {
+          AppState.otpSessionData = null;
+          if (window.location.hash.startsWith('#otp-verification')) {
+            if (window.history && window.history.replaceState) {
+              window.history.replaceState(null, '', window.location.pathname + window.location.search);
+            } else {
+              window.location.hash = '';
+            }
+          }
+        }
+      }
+    } catch (e) {
+      if (e && e.requiresOtpVerification) {
+        AppState.otpSessionData = e;
+      }
+    }
+  }
+
+  renderApp();
+});
+
+window.addEventListener('hashchange', () => {
   renderApp();
 });

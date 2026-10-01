@@ -267,6 +267,8 @@ router.post('/login', async (req, res) => {
         email: user.email,
         role: user.role,
         emailVerified: !!user.email_verified,
+        requires_otp_verification: 0,
+        is_suspicious: 0,
         storageQuotaBytes: user.storage_quota_bytes
       }
     });
@@ -345,6 +347,8 @@ router.post('/verify-otp', async (req, res) => {
         email: user.email,
         role: user.role,
         emailVerified: !!user.email_verified,
+        requires_otp_verification: 0,
+        is_suspicious: 0,
         storageQuotaBytes: user.storage_quota_bytes
       }
     });
