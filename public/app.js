@@ -93,7 +93,7 @@ async function loadPublicBranding() {
     const settings = await res.json();
     if (!res.ok) throw new Error(settings.error || 'Failed to load app settings');
 
-    const title = settings.websiteTitle || settings.appName || 'VPS SFTP Cloud Manager';
+    const title = settings.websiteTitle || settings.appName || 'ZenStorage';
     document.title = title;
 
     if (settings.websiteIconUrl) {
@@ -541,7 +541,7 @@ async function triggerOtpVerificationSubmit() {
     localStorage.setItem('vps_token', data.token);
     localStorage.setItem('vps_user', JSON.stringify(AppState.user));
 
-    showToast('Identity verified successfully! Welcome to ZenCloud.', 'success');
+    showToast('Identity verified successfully! Welcome to ZenStorage.', 'success');
 
     // Smooth transition to Dashboard
     setTimeout(() => {
@@ -1106,7 +1106,7 @@ function renderAuthView(container) {
             <i data-lucide="cloud-lightning" class="w-8 h-8"></i>
           </div>
           <h1 class="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight flex items-center justify-center gap-2">
-            ZenCloud
+            ZenStorage
             <span class="text-xs font-bold uppercase tracking-wider bg-slate-200 text-slate-800 dark:bg-white/10 dark:text-white border border-slate-300 dark:border-white/20 px-2 py-0.5 rounded-lg">Storage</span>
           </h1>
           <p class="text-slate-500 dark:text-slate-400 text-xs mt-1">VPS SFTP Storage & Inbuilt Developer Studio</p>
@@ -1267,14 +1267,14 @@ function renderDashboardLayout(container) {
       
       <!-- Minimalist Pitch Black & Light Mode Responsive Top Status & Utility Bar -->
       <header id="twilight-top-bar" class="twilight-navbar w-full px-4 sm:px-6 py-2.5 z-40 sticky top-0 flex items-center justify-between gap-3">
-        <!-- Left: ZenCloud Minimal Brand Mark -->
+        <!-- Left: ZenStorage Minimal Brand Mark -->
         <div class="flex items-center gap-2.5 shrink-0 cursor-pointer select-none group" onclick="navigateTab('dashboard')">
           <div class="zencloud-logo-badge p-1.5 sm:p-2 rounded-xl group-hover:scale-105 transition-all">
             <i data-lucide="cloud-lightning" class="w-4 h-4"></i>
           </div>
           <div>
             <h1 class="font-bold text-sm sm:text-base tracking-tight text-slate-900 dark:text-white leading-none">
-              ZenCloud
+              ZenStorage
             </h1>
             <div class="text-[11px] text-slate-500 dark:text-slate-400 leading-none mt-1">Cloud Storage & Studio</div>
           </div>
@@ -1532,7 +1532,7 @@ function openTwilightCommandPalette() {
       </div>
       <div class="px-4 py-2 border-t border-white/10 bg-[#000000] text-[11px] text-slate-400 flex items-center justify-between">
         <span>Press <kbd class="px-1 py-0.2 bg-[#141414] border border-white/20 rounded font-mono text-[10px]">Enter</kbd> to execute</span>
-        <span class="text-white font-semibold">ZenCloud Twilight Bar</span>
+        <span class="text-white font-semibold">ZenStorage Twilight Bar</span>
       </div>
     </div>
   `;
@@ -2339,7 +2339,7 @@ const FILE_STARTER_PRESETS = {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ZenCloud Webpage</title>
+  <title>ZenStorage Webpage</title>
   <style>
     body {
       font-family: system-ui, -apple-system, sans-serif;
@@ -2401,10 +2401,10 @@ const FILE_STARTER_PRESETS = {
 </head>
 <body>
   <div class="hero-card">
-    <div class="badge">🚀 Built with ZenCloud Editor</div>
+    <div class="badge">🚀 Built with ZenStorage Editor</div>
     <h1>Hello World!</h1>
-    <p>This page is hosted on ZenCloud VPS Cloud and edited with the inbuilt live editor.</p>
-    <button class="action-btn" onclick="alert('Hello from ZenCloud!')">Click Me</button>
+    <p>This page is hosted on ZenStorage VPS Cloud and edited with the inbuilt live editor.</p>
+    <button class="action-btn" onclick="alert('Hello from ZenStorage!')">Click Me</button>
   </div>
 </body>
 </html>`
@@ -2412,32 +2412,32 @@ const FILE_STARTER_PRESETS = {
   text: {
     name: 'notes.txt',
     desc: 'Plain text file for quick notes, logs, or keys',
-    content: `ZenCloud Storage - Project Notes\nCreated: ${new Date().toLocaleString()}\n\n- File created with the ZenCloud Inbuilt Editor\n- Add your notes, documentation, or lists here.\n`
+    content: `ZenStorage Storage - Project Notes\nCreated: ${new Date().toLocaleString()}\n\n- File created with the ZenStorage Inbuilt Editor\n- Add your notes, documentation, or lists here.\n`
   },
   javascript: {
     name: 'app.js',
     desc: 'Modern JavaScript application module',
-    content: `// ZenCloud Application Script\nconsole.log('ZenCloud app module initialized at:', new Date().toISOString());\n\nfunction main() {\n  console.log('Running main process...');\n}\n\nmain();\n`
+    content: `// ZenStorage Application Script\nconsole.log('ZenStorage app module initialized at:', new Date().toISOString());\n\nfunction main() {\n  console.log('Running main process...');\n}\n\nmain();\n`
   },
   css: {
     name: 'style.css',
     desc: 'CSS Stylesheet with modern design tokens',
-    content: `/* ZenCloud Stylesheet */\n:root {\n  --primary: #ffffff;\n  --bg-dark: #000000;\n  --card-bg: #080808;\n  --text-main: #ffffff;\n}\n\nbody {\n  background: var(--bg-dark);\n  color: var(--text-main);\n  font-family: system-ui, -apple-system, sans-serif;\n  margin: 0;\n  padding: 1.5rem;\n}\n`
+    content: `/* ZenStorage Stylesheet */\n:root {\n  --primary: #ffffff;\n  --bg-dark: #000000;\n  --card-bg: #080808;\n  --text-main: #ffffff;\n}\n\nbody {\n  background: var(--bg-dark);\n  color: var(--text-main);\n  font-family: system-ui, -apple-system, sans-serif;\n  margin: 0;\n  padding: 1.5rem;\n}\n`
   },
   json: {
     name: 'config.json',
     desc: 'JSON Configuration document with formatted object',
-    content: `{\n  "serviceName": "zencloud-storage-instance",\n  "version": "1.0.0",\n  "environment": "production",\n  "storage": {\n    "enabled": true,\n    "protocol": "sftp",\n    "features": [\n      "inbuilt-editor",\n      "live-preview",\n      "s3-cluster"\n    ]\n  }\n}\n`
+    content: `{\n  "serviceName": "zenstorage-instance",\n  "version": "1.0.0",\n  "environment": "production",\n  "storage": {\n    "enabled": true,\n    "protocol": "sftp",\n    "features": [\n      "inbuilt-editor",\n      "live-preview",\n      "s3-cluster"\n    ]\n  }\n}\n`
   },
   markdown: {
     name: 'README.md',
     desc: 'Markdown Documentation with formatted headings and lists',
-    content: `# Project Documentation\n\nWelcome to your project hosted on **ZenCloud**.\n\n## 🌟 Features\n- **Inbuilt Code & Text Editor** with syntax highlighting for HTML, JS, CSS, JSON, Markdown, and more.\n- **Real-Time Live HTML & Markdown Preview** split screen.\n- **Secure SFTP Storage** with granular quota management.\n- **AWS S3 & Vercel Blob API Cluster** compatibility.\n\n## 🛠 Quick Start\n1. Edit this file or create your own \`.html\` and \`.txt\` files.\n2. Preview changes live side-by-side.\n3. Save with \`Ctrl + S\`.\n`
+    content: `# Project Documentation\n\nWelcome to your project hosted on **ZenStorage**.\n\n## 🌟 Features\n- **Inbuilt Code & Text Editor** with syntax highlighting for HTML, JS, CSS, JSON, Markdown, and more.\n- **Real-Time Live HTML & Markdown Preview** split screen.\n- **Secure SFTP Storage** with granular quota management.\n- **AWS S3 & Vercel Blob API Cluster** compatibility.\n\n## 🛠 Quick Start\n1. Edit this file or create your own \`.html\` and \`.txt\` files.\n2. Preview changes live side-by-side.\n3. Save with \`Ctrl + S\`.\n`
   },
   sh: {
     name: 'deploy.sh',
     desc: 'Bash Shell script with execution safeguards',
-    content: `#!/usr/bin/env bash\nset -euo pipefail\n\necho "=== ZenCloud Deployment Script ==="\necho "Timestamp: $(date)"\necho "Deployment completed successfully!"\n`
+    content: `#!/usr/bin/env bash\nset -euo pipefail\n\necho "=== ZenStorage Deployment Script ==="\necho "Timestamp: $(date)"\necho "Deployment completed successfully!"\n`
   }
 };
 
@@ -5415,7 +5415,7 @@ function renderTerminalConsole(container) {
           </summary>
           <div class="mt-3 text-xs text-slate-600 dark:text-slate-400 space-y-2 leading-relaxed border-t border-slate-200 dark:border-slate-800 pt-3">
             <p>
-              If your VPS console showed <span class="font-mono text-red-400">WebSocket Error</span>, ZenCloud now <b>automatically falls back to HTTP Streaming</b> so you can use the interactive shell right away!
+              If your VPS console showed <span class="font-mono text-red-400">WebSocket Error</span>, ZenStorage now <b>automatically falls back to HTTP Streaming</b> so you can use the interactive shell right away!
             </p>
             <p>
               To enable high-speed direct <b>WebSockets</b> on your VPS Nginx reverse proxy:

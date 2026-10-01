@@ -338,9 +338,9 @@ function initDatabase() {
           ['default_monthly_bandwidth_bytes', '16106127360'],
           ['default_monthly_api_requests', '100000'],
           ['max_share_links_per_user', '3'],
-          ['app_name', 'VPS Cloud Manager'],
+          ['app_name', 'ZenStorage'],
           ['app_url', 'http://storage.zendevelopment.in'],
-          ['website_title', 'VPS SFTP Cloud Manager'],
+          ['website_title', 'ZenStorage'],
           ['website_icon_url', ''],
           ['session_timeout_hours', '24'],
           ['discord_enabled', 'false'],
@@ -841,43 +841,124 @@ function initDatabase() {
     [
       'otp_security_verification',
       'Security OTP Verification Code',
-      'Your 4-Digit Security Verification Code: {{otp_code}}',
-      `
-      <div style="margin:0;padding:0;background:#000000;font-family:Arial,Helvetica,sans-serif;color:#f3f4f6;">
-        <div style="max-width:540px;margin:20px auto;background:#0a0a0c;border:1px solid #222228;border-radius:16px;overflow:hidden;box-shadow:0 25px 50px -12px rgba(0,0,0,0.8);">
-          <div style="background:#111114;padding:24px 30px;border-bottom:1px solid #222228;text-align:center;">
-            <div style="font-size:22px;font-weight:800;letter-spacing:-0.5px;color:#ffffff;">
-              Zen<span style="color:#ffffff;">Cloud</span> <span style="font-size:11px;padding:3px 8px;border-radius:6px;background:rgba(255,255,255,0.15);color:#ffffff;text-transform:uppercase;font-weight:700;margin-left:6px;">Security</span>
-            </div>
-          </div>
-          <div style="padding:32px 28px;text-align:center;">
-            <h1 style="margin:0 0 12px 0;font-size:22px;font-weight:700;color:#ffffff;">
-              Account Security Verification
-            </h1>
-            <p style="margin:0 0 18px 0;font-size:14px;line-height:1.6;color:#9ca3af;">
-              Hello <strong>{{name}}</strong>, your account was placed under verification for security review.
-            </p>
-            <div style="background:#18181c;border-left:4px solid #f59e0b;padding:12px 16px;text-align:left;margin-bottom:24px;border-radius:0 8px 8px 0;">
-              <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#fbbf24;letter-spacing:0.5px;">Reason</div>
-              <div style="font-size:13px;color:#e5e7eb;margin-top:4px;">{{reason}}</div>
-            </div>
-            <p style="margin:0 0 16px 0;font-size:13px;color:#d1d5db;">
-              Enter this <strong>4-digit verification code</strong> on the screen to unlock your account:
-            </p>
-            <div style="background:#000000;border:2px solid rgba(255,255,255,0.3);border-radius:16px;padding:16px 24px;display:inline-block;margin:10px auto 24px auto;letter-spacing:14px;font-family:monospace;font-size:36px;font-weight:800;color:#ffffff;text-shadow:0 0 20px rgba(255,255,255,0.6);">
-              {{otp_code}}
-            </div>
-            <p style="margin:0;font-size:12px;color:#6b7280;line-height:1.5;">
-              This code will expire in 24 hours. If you did not request this verification, please contact your administrator.
-            </p>
-          </div>
-          <div style="background:#111114;border-top:1px solid #222228;padding:16px 30px;text-align:center;">
-            <p style="margin:0;font-size:11px;color:#6b7280;">
-              © ${new Date().getFullYear()} {{app_name}}. All rights reserved.
-            </p>
-          </div>
+      'Your {{app_name}} verification code is {{otp_code}}',
+      `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="x-apple-disable-message-reformatting">
+  <meta name="color-scheme" content="dark">
+  <meta name="supported-color-schemes" content="dark">
+  <title>Account Security Verification</title>
+  <style>
+    /* --- Progressive enhancement (safely ignored if <style> is stripped) --- */
+    @media (max-width:480px) {
+      .zc-pad   { padding-left:20px !important; padding-right:20px !important; }
+      .zc-otp   { font-size:30px !important; letter-spacing:0.22em !important; padding-left:0.22em !important; }
+      .zc-h1    { font-size:20px !important; }
+      .zc-codebox { padding:18px 10px !important; }
+    }
+    /* Stop iOS / Gmail from turning the code into a phone link */
+    a[x-apple-data-detectors], .zc-otp a {
+      color:inherit !important; text-decoration:none !important; font-size:inherit !important;
+      font-family:inherit !important; font-weight:inherit !important; line-height:inherit !important;
+    }
+  </style>
+</head>
+
+<body style="margin:0;padding:0;background:#000000;">
+
+  <!-- ============ PREHEADER (inbox preview text) ============ -->
+  <div style="display:none;font-size:1px;color:#000000;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">
+    Your {{app_name}} verification code is {{otp_code}} — it expires in 24 hours.
+    &#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;
+  </div>
+
+  <!-- ============ WRAPPER ============ -->
+  <div style="margin:0;padding:0;background:#000000;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;color:#f4f4f5;-webkit-font-smoothing:antialiased;">
+
+    <div style="max-width:540px;margin:28px auto;background:#0b0b0e;border:1px solid #1f1f26;border-radius:18px;overflow:hidden;box-shadow:0 30px 60px -20px rgba(0,0,0,0.9);">
+
+      <!-- Accent bar (solid fallback → gradient enhancement) -->
+      <div style="height:4px;background:#f59e0b;background:linear-gradient(90deg,#f59e0b 0%,#fbbf24 50%,#f59e0b 100%);font-size:0;line-height:0;">&nbsp;</div>
+
+      <!-- ============ HEADER ============ -->
+      <div class="zc-pad" style="background:#111116;padding:22px 30px;border-bottom:1px solid #1f1f26;text-align:center;">
+        <div style="font-size:21px;font-weight:800;letter-spacing:-0.5px;color:#ffffff;line-height:1.2;">
+          {{app_name}}
+          <span style="display:inline-block;vertical-align:middle;font-size:10px;padding:3px 9px;border-radius:999px;background:rgba(245,158,11,0.14);border:1px solid rgba(245,158,11,0.35);color:#fbbf24;text-transform:uppercase;font-weight:700;letter-spacing:1px;margin-left:6px;">Security</span>
         </div>
       </div>
+
+      <!-- ============ BODY ============ -->
+      <div class="zc-pad" style="padding:36px 32px 32px 32px;text-align:center;">
+
+        <!-- Lock badge -->
+        <div style="width:56px;height:56px;line-height:56px;margin:0 auto 22px auto;border-radius:50%;background:rgba(245,158,11,0.10);border:1px solid rgba(245,158,11,0.32);font-size:23px;text-align:center;">&#128274;</div>
+
+        <!-- Headline -->
+        <h1 class="zc-h1" style="margin:0 0 10px 0;font-size:23px;line-height:1.3;font-weight:700;color:#ffffff;letter-spacing:-0.3px;">
+          Account Security Verification
+        </h1>
+
+        <p style="margin:0 0 24px 0;font-size:14px;line-height:1.65;color:#a1a1aa;">
+          Hello <strong style="color:#e4e4e7;font-weight:600;">{{name}}</strong>, your account has been placed under a security review and needs to be verified.
+        </p>
+
+        <!-- Reason callout -->
+        <div style="background:#16161c;border-left:3px solid #f59e0b;padding:14px 18px;text-align:left;margin:0 0 28px 0;border-radius:0 10px 10px 0;">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.4px;color:#fbbf24;">Reason for review</div>
+          <div style="font-size:13px;line-height:1.55;color:#e4e4e7;margin-top:5px;">{{reason}}</div>
+        </div>
+
+        <!-- OTP label -->
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.6px;color:#8b8b95;margin:0 0 12px 0;">
+          Your 4-digit verification code
+        </div>
+
+        <!-- OTP code -->
+        <div class="zc-codebox" style="background:#000000;border:1px solid rgba(255,255,255,0.16);border-radius:14px;padding:22px 16px;margin:0 auto 16px auto;max-width:330px;box-shadow:inset 0 0 40px rgba(255,255,255,0.04);">
+          <div class="zc-otp" style="font-family:'SF Mono',ui-monospace,'Roboto Mono',Menlo,Consolas,monospace;font-size:38px;font-weight:700;color:#ffffff;letter-spacing:0.28em;padding-left:0.28em;line-height:1;white-space:nowrap;text-shadow:0 0 24px rgba(255,255,255,0.45);">{{otp_code}}</div>
+        </div>
+
+        <!-- Expiry pill -->
+        <div style="display:inline-block;font-size:12px;font-weight:600;color:#d4d4d8;background:#16161c;border:1px solid #26262e;border-radius:999px;padding:7px 16px;margin:0 0 26px 0;">
+          &#9201; Expires in 24 hours
+        </div>
+
+        <!-- Divider -->
+        <div style="height:1px;background:#1f1f26;font-size:0;line-height:0;margin:0 0 24px 0;">&nbsp;</div>
+
+        <!-- Security tip -->
+        <div style="background:#101014;border:1px solid #1f1f26;border-radius:12px;padding:16px 18px;text-align:left;">
+          <div style="font-size:12px;font-weight:700;color:#fbbf24;margin-bottom:6px;">&#128737;&#65039; Keep your account safe</div>
+          <div style="font-size:12px;line-height:1.65;color:#8b8b95;">
+            {{app_name}} will <strong style="color:#d4d4d8;font-weight:600;">never</strong> ask you for this code by phone, chat, or email. Don't share it with anyone.
+            If you didn't request this verification, contact your administrator immediately.
+          </div>
+        </div>
+
+        <p style="margin:24px 0 0 0;font-size:12px;line-height:1.6;color:#71717a;">
+          Having trouble? Reply to this email or reach out to your workspace administrator.
+        </p>
+
+      </div>
+
+      <!-- ============ FOOTER ============ -->
+      <div class="zc-pad" style="background:#111116;border-top:1px solid #1f1f26;padding:18px 30px;text-align:center;">
+        <p style="margin:0 0 6px 0;font-size:11px;line-height:1.5;color:#71717a;">
+          This is an automated security message — please do not reply directly.
+        </p>
+        <p style="margin:0;font-size:11px;color:#52525b;">
+          &copy; ${new Date().getFullYear()} {{app_name}}. All rights reserved.
+        </p>
+      </div>
+
+    </div>
+  </div>
+</body>
+</html>
       `
     ]
         ];

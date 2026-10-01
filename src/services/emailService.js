@@ -164,7 +164,7 @@ class EmailService {
       const settingsMap = {};
       for (const s of appSettings) settingsMap[s.key] = s.value;
 
-      const appName = settingsMap.app_name || 'ZenCloud Storage';
+      const appName = settingsMap.app_name || 'ZenStorage';
 
       return await this.sendTemplatedEmail('otp_security_verification', user.email, {
         name: user.name || user.username,
