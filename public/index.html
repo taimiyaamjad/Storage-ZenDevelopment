@@ -5,14 +5,39 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#000000">
   <meta name="mobile-web-app-capable" content="yes">
-  <title>VPS SFTP Cloud & S3 Manager</title>
-  <meta name="description" content="Production VPS SFTP file manager with AWS S3 & Vercel Blob compatible storage API cluster, interactive installation script, and pitch-black dark interface.">
-  <meta property="og:title" content="VPS SFTP Cloud & S3 Manager">
-  <meta property="og:description" content="Production VPS SFTP file manager with AWS S3 & Vercel Blob compatible storage API cluster, interactive installation script, and pitch-black dark interface.">
+  <title>ZenCloud - VPS SFTP Cloud & S3 Manager</title>
+  <meta name="description" content="ZenCloud production VPS SFTP file manager with AWS S3 & Vercel Blob compatible storage API cluster, inbuilt studio, and pitch-black dark interface.">
+  <meta property="og:title" content="ZenCloud - VPS SFTP Cloud & S3 Manager">
+  <meta property="og:description" content="ZenCloud production VPS SFTP file manager with AWS S3 & Vercel Blob compatible storage API cluster, inbuilt studio, and pitch-black dark interface.">
+  <!-- Google Fonts: Plus Jakarta Sans & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Lucide Icons CDN -->
   <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Marked.js for Live Markdown Rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <!-- Ace Code Editor CDN & Extensions for Inbuilt Multi-File Editing -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.7/ace.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.7/ext-searchbox.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.7/ext-language_tools.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.7/mode-html.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.7/mode-javascript.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.7/mode-css.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.7/mode-json.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.7/mode-markdown.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.7/mode-text.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.7/mode-xml.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.7/mode-sh.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.7/mode-sql.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.7/mode-yaml.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.7/mode-python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.7/theme-dracula.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.7/theme-monokai.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.7/theme-tomorrow_night_eighties.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.7/theme-chrome.min.js"></script>
   <!-- Xterm.js Terminal CSS & JS for Admin VPS Console -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
   <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
@@ -22,26 +47,48 @@
       darkMode: 'class',
       theme: {
         extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'Inter', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace']
+          },
           colors: {
+            zencloud: {
+              970: '#000000',
+              950: '#020202',
+              900: '#050505',
+              850: '#0a0a0a',
+              800: '#121212',
+              750: '#1a1a1a',
+              700: '#262626',
+              600: '#404040',
+              500: '#737373',
+              400: '#a3a3a3',
+              300: '#d4d4d4',
+              200: '#e5e5e5',
+              100: '#f5f5f5',
+              50: '#ffffff'
+            },
             pitch: {
               970: '#000000',
-              950: '#040405',
-              900: '#08080a',
-              850: '#0d0d10',
-              800: '#141418',
-              750: '#1b1b22',
-              700: '#23232c',
-              600: '#32323f',
+              950: '#020202',
+              900: '#050505',
+              850: '#0a0a0a',
+              800: '#121212',
+              750: '#1a1a1a',
+              700: '#262626',
+              600: '#333333',
             },
             brand: {
-              50: '#f0f9ff',
-              100: '#e0f2fe',
-              400: '#38bdf8',
-              500: '#0ea5e9',
-              600: '#0284c7',
-              700: '#0369a1',
-              800: '#075985',
-              900: '#0c4a6e',
+              50: '#ffffff',
+              100: '#f5f5f5',
+              200: '#e5e5e5',
+              300: '#d4d4d4',
+              400: '#a3a3a3',
+              500: '#ffffff',
+              600: '#ffffff',
+              700: '#e2e8f0',
+              800: '#cbd5e1',
+              900: '#94a3b8',
             }
           },
           animation: {
@@ -86,7 +133,7 @@
       --border-header: #e2e8f0;
       --card-bg: #ffffff;
       --card-border: #e2e8f0;
-      --card-hover-border: #0284c7;
+      --card-hover-border: #7c3aed;
       --text-heading: #090d16;
       --text-body: #1e293b;
       --text-muted: #475569;
@@ -95,59 +142,229 @@
       --input-border: #cbd5e1;
       --input-text: #090d16;
       --nav-inactive-text: #334155;
-      --nav-hover-bg: #f1f5f9;
-      --nav-hover-text: #090d16;
-      --code-bg: #f1f5f9;
-      --code-text: #0369a1;
-      --table-header-bg: #f1f5f9;
-      --table-row-hover: #f8fafc;
+      --nav-hover-bg: #f5f3ff;
+      --nav-hover-text: #6d28d9;
+      --code-bg: #f5f3ff;
+      --code-text: #6d28d9;
+      --table-header-bg: #f8fafc;
+      --table-row-hover: #f1f5f9;
       --drawer-bg: #ffffff;
       --drawer-border: #e2e8f0;
       --modal-bg: #ffffff;
-      --scrollbar-thumb: #94a3b8;
+      --scrollbar-thumb: #cbd5e1;
       --scrollbar-track: #f1f5f9;
     }
 
     /* =========================================================
-       2. TRUE PITCH DARK BLACK THEME SPECIFICATION
-       Pure OLED Pitch Black (#000000), Obsidian cards (#060609),
-       crisp borders (#14141a), high-contrast white text (#ffffff)
+       2. PITCH BLACK DARK THEME SPECIFICATION
+       True OLED Pitch Black (#000000), Deep Obsidian Surfaces (#040407),
+       Crisp White / Silver borders (#1c1c1c / #ffffff), Vivid white text
        ========================================================= */
     html.dark {
       color-scheme: dark;
       --bg-main: #000000;
-      --bg-sidebar: #000000;
-      --border-sidebar: #141418;
-      --bg-header: rgba(0, 0, 0, 0.96);
-      --border-header: #141418;
-      --card-bg: #060609;
-      --card-border: #15151c;
-      --card-hover-border: #0ea5e9;
+      --bg-sidebar: #020202;
+      --border-sidebar: #181818;
+      --bg-header: rgba(0, 0, 0, 0.92);
+      --border-header: #1c1c1c;
+      --card-bg: #050505;
+      --card-border: #1e1e1e;
+      --card-hover-border: #ffffff;
       --text-heading: #ffffff;
-      --text-body: #f3f4f6;
-      --text-muted: #9ca3af;
-      --text-soft: #6b7280;
-      --input-bg: #020203;
-      --input-border: #1a1a24;
+      --text-body: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-soft: #64748b;
+      --input-bg: #000000;
+      --input-border: #262626;
       --input-text: #ffffff;
-      --nav-inactive-text: #9ca3af;
-      --nav-hover-bg: #0e0e13;
+      --nav-inactive-text: #94a3b8;
+      --nav-hover-bg: #141414;
       --nav-hover-text: #ffffff;
       --code-bg: #000000;
-      --code-text: #38bdf8;
-      --table-header-bg: #020204;
-      --table-row-hover: #0a0a0f;
-      --drawer-bg: #040406;
-      --drawer-border: #141418;
-      --modal-bg: #060609;
-      --scrollbar-thumb: #22222c;
+      --code-text: #ffffff;
+      --table-header-bg: #050505;
+      --table-row-hover: #0e0e0e;
+      --drawer-bg: #000000;
+      --drawer-border: #1e1e1e;
+      --modal-bg: #060606;
+      --scrollbar-thumb: #262626;
       --scrollbar-track: #000000;
     }
 
     body {
       background-color: var(--bg-main);
       color: var(--text-body);
+      font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
       transition: background-color 0.2s ease, color 0.2s ease;
+      position: relative;
+    }
+
+    /* ZenCloud Ambient Grounding on Pitch Black */
+    html.dark body {
+      background-color: #000000 !important;
+    }
+
+    /* =========================================================
+       ZENCLOUD TWILIGHT NAVIGATION BAR & FLOATING DOCK
+       Ultra-modern monochrome glassmorphism with pitch black styling
+       ========================================================= */
+    .twilight-navbar {
+      background: rgba(0, 0, 0, 0.98) !important;
+      backdrop-filter: blur(24px) saturate(190%) !important;
+      -webkit-backdrop-filter: blur(24px) saturate(190%) !important;
+      border-bottom: 1px solid #141418 !important;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.9) !important;
+      position: relative;
+    }
+    html:not(.dark) .twilight-navbar,
+    html:not(.dark) #twilight-top-bar {
+      background: rgba(255, 255, 255, 0.98) !important;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.12) !important;
+      box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.07), inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+      color: #090d16 !important;
+    }
+    html:not(.dark) #twilight-top-bar h1,
+    html:not(.dark) #twilight-top-bar span,
+    html:not(.dark) #twilight-top-bar div:not(.bg-emerald-500, .bg-emerald-400) {
+      color: #090d16;
+    }
+    html:not(.dark) #twilight-top-bar .text-slate-400,
+    html:not(.dark) #twilight-top-bar .text-slate-500,
+    html:not(.dark) #twilight-top-bar .text-slate-300 {
+      color: #475569 !important;
+    }
+    html:not(.dark) #twilight-create-menu,
+    html:not(.dark) #twilight-user-menu {
+      background: #ffffff !important;
+      border: 1px solid rgba(0, 0, 0, 0.12) !important;
+      box-shadow: 0 18px 45px -8px rgba(0, 0, 0, 0.18) !important;
+      color: #090d16 !important;
+    }
+    html:not(.dark) #twilight-create-menu *,
+    html:not(.dark) #twilight-user-menu * {
+      color: #090d16;
+    }
+    html:not(.dark) #twilight-create-menu .text-slate-400,
+    html:not(.dark) #twilight-user-menu .text-slate-400,
+    html:not(.dark) #twilight-create-menu .text-slate-500,
+    html:not(.dark) #twilight-user-menu .text-slate-500 {
+      color: #64748b !important;
+    }
+    html:not(.dark) #twilight-create-menu button:hover,
+    html:not(.dark) #twilight-user-menu button:hover {
+      background-color: #f1f5f9 !important;
+    }
+    html:not(.dark) #twilight-user-menu .bg-\[\#101010\] {
+      background-color: #f8fafc !important;
+      border-color: #e2e8f0 !important;
+    }
+
+    /* Floating Bottom Twilight Nav Bar */
+    .twilight-floating-dock {
+      background: rgba(10, 10, 10, 0.94) !important;
+      backdrop-filter: blur(20px) saturate(180%) !important;
+      -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+      border: 1px solid rgba(255, 255, 255, 0.12) !important;
+      box-shadow: 0 16px 40px -8px rgba(0, 0, 0, 0.85) !important;
+      position: relative;
+    }
+    html:not(.dark) .twilight-floating-dock {
+      background: rgba(255, 255, 255, 0.98) !important;
+      border: 1px solid rgba(0, 0, 0, 0.09) !important;
+      box-shadow: 0 12px 30px -6px rgba(0, 0, 0, 0.08) !important;
+    }
+
+    .twilight-floating-laser {
+      display: none !important;
+    }
+
+    .twilight-dock-tab {
+      transition: all 0.15s ease;
+    }
+    .twilight-dock-tab:hover {
+      transform: translateY(-1px);
+    }
+    .twilight-dock-tab:active {
+      transform: scale(0.98);
+    }
+
+    .twilight-laser-beam {
+      display: none !important;
+    }
+
+    .twilight-nav-dock {
+      background: rgba(10, 10, 10, 0.92);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+      transition: all 0.2s ease;
+    }
+    html:not(.dark) .twilight-nav-dock {
+      background: #f8fafc;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    }
+
+    .twilight-tab-active {
+      background: #ffffff !important;
+      color: #000000 !important;
+      font-weight: 600 !important;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
+    }
+    .twilight-tab-active * {
+      color: #000000 !important;
+    }
+    html:not(.dark) .twilight-tab-active {
+      background: #090d16 !important;
+      color: #ffffff !important;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
+    }
+    html:not(.dark) .twilight-tab-active * {
+      color: #ffffff !important;
+    }
+
+    .twilight-tab-inactive {
+      color: #888888;
+      transition: all 0.15s ease;
+    }
+    .twilight-tab-inactive:hover {
+      color: #ffffff;
+      background: rgba(255, 255, 255, 0.08);
+    }
+    html:not(.dark) .twilight-tab-inactive {
+      color: #555555;
+    }
+    html:not(.dark) .twilight-tab-inactive:hover {
+      color: #090d16;
+      background: rgba(0, 0, 0, 0.05);
+    }
+
+    .twilight-btn-glow {
+      background: #ffffff !important;
+      color: #000000 !important;
+      font-weight: 600 !important;
+      transition: all 0.15s ease;
+    }
+    .twilight-btn-glow * {
+      color: #000000 !important;
+    }
+    .twilight-btn-glow:hover {
+      background: #e2e8f0 !important;
+    }
+    html:not(.dark) .twilight-btn-glow {
+      background: #090d16 !important;
+      color: #ffffff !important;
+    }
+    html:not(.dark) .twilight-btn-glow * {
+      color: #ffffff !important;
+    }
+
+    .twilight-pill {
+      background: rgba(14, 14, 16, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    html:not(.dark) .twilight-pill {
+      background: #ffffff;
+      border: 1px solid rgba(0, 0, 0, 0.08);
     }
 
     .theme-main-bg {
@@ -172,7 +389,7 @@
       box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
     }
     html.dark .glass-card, html.dark .pitch-card {
-      box-shadow: 0 4px 24px -2px rgba(0, 0, 0, 0.9);
+      box-shadow: 0 8px 30px -4px rgba(0, 0, 0, 0.85);
     }
 
     .pitch-card-hover {
@@ -183,10 +400,10 @@
       transform: translateY(-2px);
     }
     html:not(.dark) .pitch-card-hover:hover {
-      box-shadow: 0 10px 25px -4px rgba(2, 132, 199, 0.12);
+      box-shadow: 0 10px 25px -4px rgba(0, 0, 0, 0.1);
     }
     html.dark .pitch-card-hover:hover {
-      box-shadow: 0 10px 25px -4px rgba(14, 165, 233, 0.25);
+      box-shadow: 0 10px 28px -4px rgba(255, 255, 255, 0.15);
     }
 
     .pitch-input {
@@ -196,8 +413,8 @@
       transition: border-color 0.15s ease, box-shadow 0.15s ease;
     }
     .pitch-input:focus {
-      border-color: #0ea5e9 !important;
-      box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.2) !important;
+      border-color: #ffffff !important;
+      box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.2) !important;
     }
 
     /* =========================================================
@@ -260,11 +477,18 @@
       color: #475569 !important; /* Slate-600: 7:1 contrast ratio */
     }
 
-    /* Vibrant accents with strong contrast in light mode */
-    html:not(.dark) .text-cyan-400 { color: #0284c7 !important; }
-    html:not(.dark) .text-cyan-300 { color: #0369a1 !important; }
-    html:not(.dark) .text-sky-400  { color: #0284c7 !important; }
-    html:not(.dark) .text-sky-300  { color: #0369a1 !important; }
+    /* Convert blue/sky/cyan accents to crisp white in dark theme and deep slate in light mode */
+    html.dark .text-cyan-400, html.dark .text-cyan-300,
+    html.dark .text-sky-400, html.dark .text-sky-300,
+    html.dark .text-blue-400, html.dark .text-blue-300 {
+      color: #ffffff !important;
+    }
+
+    html:not(.dark) .text-cyan-400, html:not(.dark) .text-cyan-300,
+    html:not(.dark) .text-sky-400, html:not(.dark) .text-sky-300,
+    html:not(.dark) .text-blue-400, html:not(.dark) .text-blue-300 {
+      color: #0f172a !important;
+    }
     html:not(.dark) .text-emerald-400 { color: #059669 !important; }
     html:not(.dark) .text-emerald-300 { color: #047857 !important; }
     html:not(.dark) .text-amber-400 { color: #d97706 !important; }
@@ -341,6 +565,64 @@
     }
 
     /* =========================================================
+       ZENCLOUD LOGO & USER AVATAR BADGE SPECIFICATION
+       High-contrast, bold, illuminated badge styling for both dark and light mode
+       ========================================================= */
+    .zencloud-logo-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: #ffffff !important;
+      color: #000000 !important;
+      border: 1px solid rgba(255, 255, 255, 0.6) !important;
+      box-shadow: 0 0 16px rgba(255, 255, 255, 0.4), 0 2px 8px rgba(0, 0, 0, 0.5) !important;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .zencloud-logo-badge svg,
+    .zencloud-logo-badge i,
+    .zencloud-logo-badge * {
+      color: #000000 !important;
+      stroke: #000000 !important;
+    }
+    html:not(.dark) .zencloud-logo-badge {
+      background: #090d16 !important;
+      color: #ffffff !important;
+      border: 1px solid #1e293b !important;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18) !important;
+    }
+    html:not(.dark) .zencloud-logo-badge svg,
+    html:not(.dark) .zencloud-logo-badge i,
+    html:not(.dark) .zencloud-logo-badge * {
+      color: #ffffff !important;
+      stroke: #ffffff !important;
+    }
+
+    .zencloud-avatar-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: #ffffff !important;
+      color: #000000 !important;
+      border: 1px solid rgba(255, 255, 255, 0.5) !important;
+      box-shadow: 0 0 14px rgba(255, 255, 255, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.8) !important;
+      font-weight: 800 !important;
+      user-select: none;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .zencloud-avatar-badge * {
+      color: #000000 !important;
+    }
+    html:not(.dark) .zencloud-avatar-badge {
+      background: #090d16 !important;
+      color: #ffffff !important;
+      border: 1px solid #334155 !important;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12) !important;
+    }
+    html:not(.dark) .zencloud-avatar-badge * {
+      color: #ffffff !important;
+    }
+
+    /* =========================================================
        4. PITCH DARK BLACK THEME COMPONENT OVERRIDES
        True zero-light pitch black canvas and obsidian surfaces
        ========================================================= */
@@ -364,8 +646,8 @@
       background-color: #060609 !important;
       border-color: #15151c !important;
     }
-    html.dark .bg-slate-900,
-    html.dark .bg-slate-950 {
+    html.dark .bg-slate-900:not(.zencloud-logo-badge, .zencloud-avatar-badge, .zencloud-btn-primary, .bg-white),
+    html.dark .bg-slate-950:not(.zencloud-logo-badge, .zencloud-avatar-badge, .zencloud-btn-primary, .bg-white) {
       background-color: #030304 !important;
       border-color: #141418 !important;
     }
@@ -440,13 +722,14 @@
     }
     html:not(.dark) .file-grid-card:hover {
       background-color: #f8fafc !important;
-      border-color: #0284c7 !important;
-      box-shadow: 0 6px 16px -2px rgba(2, 132, 199, 0.12) !important;
+      border-color: #0f172a !important;
+      box-shadow: 0 6px 16px -2px rgba(0, 0, 0, 0.08) !important;
     }
     html.dark .file-grid-card:hover {
-      background-color: #0d0d14 !important;
-      border-color: #0ea5e9 !important;
-      box-shadow: 0 6px 20px -2px rgba(14, 165, 233, 0.25) !important;
+      background-color: #0e0e0e !important;
+      border-color: #ffffff !important;
+      box-shadow: 0 8px 24px -2px rgba(255, 255, 255, 0.15) !important;
+      transform: translateY(-2px);
     }
 
     .file-list-row {
@@ -456,8 +739,105 @@
       background-color: #f1f5f9 !important;
     }
     html.dark .file-list-row:hover {
-      background-color: #0d0d14 !important;
+      background-color: #0e0e0e !important;
     }
+
+    /* ZenCloud Primary Action Buttons (Pure Crisp White on Pitch Black) */
+    button.bg-sky-600, button.bg-sky-500, a.bg-sky-600, label.bg-sky-600,
+    button.bg-cyan-600, button.bg-cyan-500, a.bg-cyan-600, label.bg-cyan-600,
+    button.bg-blue-600, button.bg-blue-500, a.bg-blue-600, label.bg-blue-600,
+    .zenova-btn-primary, .zencloud-btn-primary {
+      background: #ffffff !important;
+      color: #000000 !important;
+      font-weight: 700 !important;
+      box-shadow: 0 4px 18px rgba(255, 255, 255, 0.3) !important;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    }
+    button.bg-sky-600 *, button.bg-sky-500 *, a.bg-sky-600 *, label.bg-sky-600 *,
+    button.bg-cyan-600 *, button.bg-cyan-500 *, a.bg-cyan-600 *, label.bg-cyan-600 *,
+    button.bg-blue-600 *, button.bg-blue-500 *, a.bg-blue-600 *, label.bg-blue-600 *,
+    .zenova-btn-primary *, .zencloud-btn-primary * {
+      color: #000000 !important;
+    }
+    button.bg-sky-600:hover, button.bg-sky-500:hover, a.bg-sky-600:hover, label.bg-sky-600:hover,
+    button.bg-cyan-600:hover, button.bg-cyan-500:hover, a.bg-cyan-600:hover, label.bg-cyan-600:hover,
+    button.bg-blue-600:hover, button.bg-blue-500:hover, a.bg-blue-600:hover, label.bg-blue-600:hover,
+    .zenova-btn-primary:hover, .zencloud-btn-primary:hover {
+      background: #e2e8f0 !important;
+      color: #000000 !important;
+      box-shadow: 0 6px 26px rgba(255, 255, 255, 0.5) !important;
+      transform: translateY(-1px);
+    }
+    html:not(.dark) button.bg-sky-600, html:not(.dark) button.bg-sky-500, html:not(.dark) a.bg-sky-600, html:not(.dark) label.bg-sky-600,
+    html:not(.dark) button.bg-cyan-600, html:not(.dark) button.bg-cyan-500, html:not(.dark) a.bg-cyan-600, html:not(.dark) label.bg-cyan-600,
+    html:not(.dark) button.bg-blue-600, html:not(.dark) button.bg-blue-500, html:not(.dark) a.bg-blue-600, html:not(.dark) label.bg-blue-600,
+    html:not(.dark) .zencloud-btn-primary, html:not(.dark) .zenova-btn-primary {
+      background: #090d16 !important;
+      color: #ffffff !important;
+    }
+    html:not(.dark) button.bg-sky-600 *, html:not(.dark) button.bg-sky-500 *, html:not(.dark) a.bg-sky-600 *, html:not(.dark) label.bg-sky-600 *,
+    html:not(.dark) button.bg-cyan-600 *, html:not(.dark) button.bg-cyan-500 *, html:not(.dark) a.bg-cyan-600 *, html:not(.dark) label.bg-cyan-600 *,
+    html:not(.dark) button.bg-blue-600 *, html:not(.dark) button.bg-blue-500 *, html:not(.dark) a.bg-blue-600 *, html:not(.dark) label.bg-blue-600 *,
+    html:not(.dark) .zencloud-btn-primary *, html:not(.dark) .zenova-btn-primary * {
+      color: #ffffff !important;
+    }
+
+    /* Built-in File Editor Ace & Split View Styling */
+    #zenova-code-editor, #zencloud-code-editor {
+      font-family: 'JetBrains Mono', monospace !important;
+      font-size: 13.5px !important;
+      line-height: 1.6 !important;
+    }
+    .ace_editor {
+      font-family: 'JetBrains Mono', monospace !important;
+    }
+    .ace_gutter {
+      background: #000000 !important;
+      color: #64748b !important;
+      border-right: 1px solid #1a1a1a !important;
+    }
+    .ace_gutter-active-line {
+      background-color: #121212 !important;
+      color: #ffffff !important;
+    }
+    .ace_cursor {
+      border-left: 2px solid #ffffff !important;
+    }
+
+    /* Markdown Live Preview Styling */
+    .markdown-body {
+      color: #cbd5e1;
+      line-height: 1.65;
+      font-size: 14px;
+    }
+    html:not(.dark) .markdown-body {
+      color: #334155;
+    }
+    .markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4 {
+      color: #ffffff;
+      font-weight: 700;
+      margin-top: 1.25rem;
+      margin-bottom: 0.5rem;
+    }
+    html:not(.dark) .markdown-body h1, html:not(.dark) .markdown-body h2, html:not(.dark) .markdown-body h3 {
+      color: #0f172a;
+    }
+    .markdown-body h1 { font-size: 1.6rem; border-bottom: 1px solid rgba(255, 255, 255, 0.15); padding-bottom: 0.35rem; }
+    .markdown-body h2 { font-size: 1.35rem; border-bottom: 1px solid rgba(255, 255, 255, 0.12); padding-bottom: 0.25rem; }
+    .markdown-body h3 { font-size: 1.15rem; }
+    .markdown-body p, .markdown-body ul, .markdown-body ol { margin-bottom: 0.85rem; }
+    .markdown-body ul { list-style-type: disc; padding-left: 1.5rem; }
+    .markdown-body ol { list-style-type: decimal; padding-left: 1.5rem; }
+    .markdown-body pre { background: #000000; padding: 0.85rem; border-radius: 0.6rem; overflow-x: auto; border: 1px solid #1a1a1a; margin-bottom: 1rem; }
+    .markdown-body code { background: rgba(255, 255, 255, 0.1); color: #ffffff; padding: 0.2rem 0.4rem; border-radius: 0.3rem; font-size: 0.88em; font-family: 'JetBrains Mono', monospace; }
+    html:not(.dark) .markdown-body code { background: #f1f5f9; color: #090d16; }
+    .markdown-body blockquote { border-left: 3px solid #ffffff; padding-left: 1rem; color: #9499b3; margin: 0.85rem 0; font-style: italic; }
+    .markdown-body a { color: #ffffff; text-decoration: underline; }
+    .markdown-body table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; }
+    .markdown-body th, .markdown-body td { border: 1px solid #1a1a1a; padding: 0.5rem 0.75rem; }
+    .markdown-body th { background: #0a0a0a; }
+    html:not(.dark) .markdown-body th { background: #f8fafc; border-color: #e2e8f0; }
+    html:not(.dark) .markdown-body td { border-color: #e2e8f0; }
 
     /* Terminal container styling */
     #terminal-container .xterm {
@@ -484,6 +864,293 @@
       object-fit: contain;
       border-radius: 0.75rem;
     }
+
+    /* =========================================================
+       OTP VERIFICATION ORBIT, MERGE, RECOIL & RECHARGE ANIMATIONS
+       ========================================================= */
+    .otp-stage-container {
+      position: relative;
+      perspective: 1000px;
+    }
+
+    .otp-box-slot {
+      position: relative;
+      transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.4s ease, border-color 0.3s ease;
+      will-change: transform, opacity;
+    }
+
+    .otp-input-element {
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .otp-input-element:focus {
+      transform: translateY(-2px);
+    }
+
+    /* 1. Circular Orbit & Merge Sequence */
+    .otp-anim-orbit-0 {
+      animation: otpOrbitMerge0 1.25s cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
+    }
+    .otp-anim-orbit-1 {
+      animation: otpOrbitMerge1 1.25s cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
+    }
+    .otp-anim-orbit-2 {
+      animation: otpOrbitMerge2 1.25s cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
+    }
+    .otp-anim-orbit-3 {
+      animation: otpOrbitMerge3 1.25s cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
+    }
+
+    @keyframes otpOrbitMerge0 {
+      0% {
+        transform: translate(0, 0) scale(1) rotate(0deg);
+        opacity: 1;
+      }
+      25% {
+        transform: translate(25px, -55px) scale(0.95) rotate(90deg);
+        opacity: 0.9;
+      }
+      50% {
+        transform: translate(84px, 0px) scale(0.85) rotate(180deg);
+        opacity: 0.8;
+      }
+      75% {
+        transform: translate(84px, 45px) scale(0.7) rotate(270deg);
+        opacity: 0.5;
+      }
+      100% {
+        transform: translate(84px, 0px) scale(0.2) rotate(360deg);
+        opacity: 0;
+      }
+    }
+
+    @keyframes otpOrbitMerge1 {
+      0% {
+        transform: translate(0, 0) scale(1) rotate(0deg);
+        opacity: 1;
+      }
+      25% {
+        transform: translate(45px, 25px) scale(0.95) rotate(90deg);
+        opacity: 0.9;
+      }
+      50% {
+        transform: translate(28px, 45px) scale(0.85) rotate(180deg);
+        opacity: 0.8;
+      }
+      75% {
+        transform: translate(-20px, -25px) scale(0.7) rotate(270deg);
+        opacity: 0.5;
+      }
+      100% {
+        transform: translate(28px, 0px) scale(0.2) rotate(360deg);
+        opacity: 0;
+      }
+    }
+
+    @keyframes otpOrbitMerge2 {
+      0% {
+        transform: translate(0, 0) scale(1) rotate(0deg);
+        opacity: 1;
+      }
+      25% {
+        transform: translate(-45px, -25px) scale(0.95) rotate(90deg);
+        opacity: 0.9;
+      }
+      50% {
+        transform: translate(-28px, -45px) scale(0.85) rotate(180deg);
+        opacity: 0.8;
+      }
+      75% {
+        transform: translate(20px, 25px) scale(0.7) rotate(270deg);
+        opacity: 0.5;
+      }
+      100% {
+        transform: translate(-28px, 0px) scale(0.2) rotate(360deg);
+        opacity: 0;
+      }
+    }
+
+    @keyframes otpOrbitMerge3 {
+      0% {
+        transform: translate(0, 0) scale(1) rotate(0deg);
+        opacity: 1;
+      }
+      25% {
+        transform: translate(-25px, 55px) scale(0.95) rotate(90deg);
+        opacity: 0.9;
+      }
+      50% {
+        transform: translate(-84px, 0px) scale(0.85) rotate(180deg);
+        opacity: 0.8;
+      }
+      75% {
+        transform: translate(-84px, -45px) scale(0.7) rotate(270deg);
+        opacity: 0.5;
+      }
+      100% {
+        transform: translate(-84px, 0px) scale(0.2) rotate(360deg);
+        opacity: 0;
+      }
+    }
+
+    /* 2. Central Fusion Core and Tick Success Badge */
+    .otp-fusion-core {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 58px;
+      height: 58px;
+      margin-top: -29px;
+      margin-left: -29px;
+      border-radius: 9999px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      opacity: 0;
+      transform: scale(0.2) rotate(0deg);
+      transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .otp-fusion-active {
+      opacity: 1 !important;
+      transform: scale(1) rotate(360deg) !important;
+      box-shadow: 0 0 35px rgba(255, 255, 255, 0.4);
+    }
+
+    .otp-success-glow {
+      opacity: 1 !important;
+      transform: scale(1.15) rotate(360deg) !important;
+      background: #10b981 !important;
+      color: #000000 !important;
+      box-shadow: 0 0 45px rgba(16, 185, 129, 0.6) !important;
+    }
+
+    /* 3. Repulsion Effect when OTP is Wrong */
+    .otp-anim-repulse-0 {
+      animation: otpRepulse0 0.85s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards !important;
+    }
+    .otp-anim-repulse-1 {
+      animation: otpRepulse1 0.85s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards !important;
+    }
+    .otp-anim-repulse-2 {
+      animation: otpRepulse2 0.85s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards !important;
+    }
+    .otp-anim-repulse-3 {
+      animation: otpRepulse3 0.85s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards !important;
+    }
+
+    @keyframes otpRepulse0 {
+      0% {
+        transform: translate(84px, 0) scale(0.3);
+        opacity: 0.3;
+      }
+      35% {
+        transform: translate(-110px, 0) scale(1.18);
+        opacity: 1;
+      }
+      65% {
+        transform: translate(-65px, 0) scale(0.95);
+      }
+      85% {
+        transform: translate(-82px, 0) scale(1.04);
+      }
+      100% {
+        transform: translate(0, 0) scale(1);
+        opacity: 1;
+      }
+    }
+
+    @keyframes otpRepulse1 {
+      0% {
+        transform: translate(28px, 0) scale(0.3);
+        opacity: 0.3;
+      }
+      35% {
+        transform: translate(-45px, 0) scale(1.18);
+        opacity: 1;
+      }
+      65% {
+        transform: translate(-18px, 0) scale(0.95);
+      }
+      85% {
+        transform: translate(-28px, 0) scale(1.04);
+      }
+      100% {
+        transform: translate(0, 0) scale(1);
+        opacity: 1;
+      }
+    }
+
+    @keyframes otpRepulse2 {
+      0% {
+        transform: translate(-28px, 0) scale(0.3);
+        opacity: 0.3;
+      }
+      35% {
+        transform: translate(45px, 0) scale(1.18);
+        opacity: 1;
+      }
+      65% {
+        transform: translate(18px, 0) scale(0.95);
+      }
+      85% {
+        transform: translate(28px, 0) scale(1.04);
+      }
+      100% {
+        transform: translate(0, 0) scale(1);
+        opacity: 1;
+      }
+    }
+
+    @keyframes otpRepulse3 {
+      0% {
+        transform: translate(-84px, 0) scale(0.3);
+        opacity: 0.3;
+      }
+      35% {
+        transform: translate(110px, 0) scale(1.18);
+        opacity: 1;
+      }
+      65% {
+        transform: translate(65px, 0) scale(0.95);
+      }
+      85% {
+        transform: translate(82px, 0) scale(1.04);
+      }
+      100% {
+        transform: translate(0, 0) scale(1);
+        opacity: 1;
+      }
+    }
+
+    /* 4. Box Shake on Error */
+    .otp-error-shake {
+      animation: otpShakeBox 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+    }
+
+    @keyframes otpShakeBox {
+      10%, 90% { transform: translate3d(-2px, 0, 0); }
+      20%, 80% { transform: translate3d(3px, 0, 0); }
+      30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+      40%, 60% { transform: translate3d(4px, 0, 0); }
+    }
+
+    .animate-slide-down {
+      animation: otpSlideDown 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    @keyframes otpSlideDown {
+      from {
+        opacity: 0;
+        transform: translateY(-12px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
     /* Desktop Viewport & Application Root Locking */
     html, body {
       height: 100%;
@@ -541,7 +1208,7 @@
     }
   </style>
 </head>
-<body class="h-full w-full overflow-hidden font-sans antialiased custom-scrollbar selection:bg-sky-500 selection:text-white">
+<body class="h-full w-full overflow-hidden font-sans antialiased custom-scrollbar selection:bg-white selection:text-black">
 
   <div id="app" class="h-full w-full overflow-hidden"></div>
 

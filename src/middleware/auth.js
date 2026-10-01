@@ -80,13 +80,17 @@ async function requireAuth(req, res, next) {
 
     // 1. Try JWT session verification first
     let user = null;
+    let isTempOtpToken = false;
     try {
       const decoded = jwt.verify(token, JWT_SECRET);
       if (decoded && decoded.userId) {
+        if (decoded.scope === 'otp_verification_temp') {
+          isTempOtpToken = true;
+        }
         user = await getRow(
           `SELECT id, name, username, email, email_verified, role, storage_quota_bytes, used_storage_bytes, storage_overage_since,
                   monthly_bandwidth_limit_bytes, used_bandwidth_bytes, monthly_api_requests_limit, used_api_requests, bandwidth_cycle_reset_at,
-                  is_suspended, is_suspicious
+                  is_suspended, is_suspicious, requires_otp_verification, otp_code, otp_expires_at, otp_reason
            FROM users WHERE id = ?;`,
           [decoded.userId]
         );
@@ -100,7 +104,7 @@ async function requireAuth(req, res, next) {
       const apiKey = await getRow(
         `SELECT ak.*, u.id as user_id, u.name as user_name, u.username, u.email, u.email_verified, u.role, u.storage_quota_bytes, u.used_storage_bytes,
                 u.monthly_bandwidth_limit_bytes, u.used_bandwidth_bytes, u.monthly_api_requests_limit, u.used_api_requests, u.bandwidth_cycle_reset_at,
-                u.is_suspended, u.is_suspicious
+                u.is_suspended, u.is_suspicious, u.requires_otp_verification, u.otp_code, u.otp_expires_at, u.otp_reason
          FROM api_keys ak
          JOIN users u ON ak.user_id = u.id
          WHERE (ak.secret_key = ? OR ak.key_id = ?) AND ak.is_active = 1;`,
@@ -129,7 +133,11 @@ async function requireAuth(req, res, next) {
           used_api_requests: apiKey.used_api_requests,
           bandwidth_cycle_reset_at: apiKey.bandwidth_cycle_reset_at,
           is_suspended: apiKey.is_suspended,
-          is_suspicious: apiKey.is_suspicious
+          is_suspicious: apiKey.is_suspicious,
+          requires_otp_verification: apiKey.requires_otp_verification,
+          otp_code: apiKey.otp_code,
+          otp_expires_at: apiKey.otp_expires_at,
+          otp_reason: apiKey.otp_reason
         };
         req.apiKey = apiKey;
       }
@@ -141,6 +149,27 @@ async function requireAuth(req, res, next) {
 
     if (user.is_suspended) {
       return res.status(403).json({ error: 'Your account has been suspended by an administrator.' });
+    }
+
+    // Check if user is locked behind OTP verification
+    const isOtpPath = req.baseUrl === '/api/auth' && (req.path === '/verify-otp' || req.path === '/resend-otp' || req.path === '/logout' || req.path === '/profile');
+    if (user.requires_otp_verification && !isOtpPath) {
+      return res.status(403).json({
+        error: 'Account security verification required. Please enter the 4-digit OTP sent to your registered email.',
+        requiresOtpVerification: true,
+        email: user.email,
+        username: user.username,
+        reason: user.otp_reason || 'Administrative Security Check'
+      });
+    }
+
+    if (isTempOtpToken && !isOtpPath) {
+      return res.status(403).json({
+        error: 'Temporary session token. OTP verification is required to access this resource.',
+        requiresOtpVerification: true,
+        email: user.email,
+        username: user.username
+      });
     }
 
     // Check and auto-reset monthly bandwidth/API requests cycle if 1 month has passed

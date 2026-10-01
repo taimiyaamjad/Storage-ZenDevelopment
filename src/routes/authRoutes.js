@@ -210,6 +210,44 @@ router.post('/login', async (req, res) => {
     await runQuery(`INSERT INTO ip_history (user_id, ip_v4, ip_v6, action) VALUES (?, ?, ?, 'login');`, [user.id, ipV4, ipV6]);
     await runQuery(`INSERT INTO login_history (user_id, ip_v4, ip_v6, user_agent, status) VALUES (?, ?, ?, ?, 'success');`, [user.id, ipV4, ipV6, userAgent]);
 
+    // Check if user account requires OTP security verification
+    if (user.requires_otp_verification) {
+      let otpCode = user.otp_code;
+      const isExpired = !user.otp_expires_at || new Date(user.otp_expires_at) < new Date();
+      if (!otpCode || isExpired) {
+        otpCode = String(Math.floor(1000 + Math.random() * 9000));
+        await runQuery(
+          `UPDATE users SET otp_code = ?, otp_expires_at = datetime('now', '+24 hours'), otp_sent_at = CURRENT_TIMESTAMP WHERE id = ?;`,
+          [otpCode, user.id]
+        );
+        await EmailService.sendOtpVerificationEmail(user, otpCode, user.otp_reason || 'Security Verification Required');
+      }
+
+      const tempToken = jwt.sign(
+        { userId: user.id, role: user.role, scope: 'otp_verification_temp' },
+        JWT_SECRET,
+        { expiresIn: '2h' }
+      );
+
+      const parts = (user.email || '').split('@');
+      const maskedEmail = parts.length === 2
+        ? `${parts[0].charAt(0)}***@${parts[1]}`
+        : user.email;
+
+      await logAudit(user.id, 'user_login_otp_required', { ipV4, userAgent }, req);
+
+      return res.status(200).json({
+        requiresOtp: true,
+        message: 'Security verification required. A 4-digit OTP code has been sent to your email.',
+        tempToken,
+        email: maskedEmail,
+        fullEmail: user.email,
+        username: user.username,
+        name: user.name,
+        reason: user.otp_reason || 'Account Security Review'
+      });
+    }
+
     // Issue Session JWT
     const token = jwt.sign(
       { userId: user.id, role: user.role },
@@ -235,6 +273,129 @@ router.post('/login', async (req, res) => {
   } catch (err) {
     console.error('Login Error:', err);
     return res.status(500).json({ error: 'Server error during login.' });
+  }
+});
+
+/**
+ * 2b. Verify OTP Code
+ */
+router.post('/verify-otp', async (req, res) => {
+  try {
+    const { otp, tempToken } = req.body || {};
+    const authHeader = req.headers.authorization || '';
+    const token = (tempToken || (authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null))?.trim();
+
+    if (!token) {
+      return res.status(401).json({ error: 'Verification session expired. Please log in again.' });
+    }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, JWT_SECRET);
+    } catch (_) {
+      return res.status(401).json({ error: 'Invalid or expired verification session. Please log in again.' });
+    }
+
+    const user = await getRow(`SELECT * FROM users WHERE id = ?;`, [decoded.userId]);
+    if (!user) {
+      return res.status(404).json({ error: 'User account not found.' });
+    }
+
+    if (user.is_suspended) {
+      return res.status(403).json({ error: 'Account is suspended. Please contact administrator.' });
+    }
+
+    const enteredOtp = String(otp || '').trim();
+    if (!enteredOtp || enteredOtp.length !== 4) {
+      return res.status(400).json({ error: 'Please enter a valid 4-digit verification code.' });
+    }
+
+    // Compare OTP code
+    if (!user.otp_code || user.otp_code !== enteredOtp) {
+      return res.status(400).json({ error: 'Invalid 4-digit verification code. Please check your email and try again.' });
+    }
+
+    if (user.otp_expires_at && new Date(user.otp_expires_at) < new Date()) {
+      return res.status(400).json({ error: 'This verification code has expired. Please click resend to get a new code.' });
+    }
+
+    // Clear verification flag and OTP
+    await runQuery(
+      `UPDATE users SET requires_otp_verification = 0, is_suspicious = 0, otp_code = NULL, otp_reason = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?;`,
+      [user.id]
+    );
+
+    // Issue permanent full-access session token
+    const fullToken = jwt.sign(
+      { userId: user.id, role: user.role },
+      JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    await logAudit(user.id, 'otp_verification_success', { enteredOtp: '****' }, req);
+
+    return res.json({
+      success: true,
+      message: 'Identity verified successfully! Welcome back.',
+      token: fullToken,
+      user: {
+        id: user.id,
+        name: user.name,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        emailVerified: !!user.email_verified,
+        storageQuotaBytes: user.storage_quota_bytes
+      }
+    });
+  } catch (err) {
+    console.error('Verify OTP Error:', err);
+    return res.status(500).json({ error: 'Server error verifying OTP code.' });
+  }
+});
+
+/**
+ * 2c. Resend OTP Code
+ */
+router.post('/resend-otp', async (req, res) => {
+  try {
+    const { tempToken } = req.body || {};
+    const authHeader = req.headers.authorization || '';
+    const token = (tempToken || (authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null))?.trim();
+
+    if (!token) {
+      return res.status(401).json({ error: 'Verification session expired. Please log in again.' });
+    }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, JWT_SECRET);
+    } catch (_) {
+      return res.status(401).json({ error: 'Invalid or expired session. Please log in again.' });
+    }
+
+    const user = await getRow(`SELECT * FROM users WHERE id = ?;`, [decoded.userId]);
+    if (!user) {
+      return res.status(404).json({ error: 'User account not found.' });
+    }
+
+    // Generate fresh 4-digit OTP code
+    const newOtp = String(Math.floor(1000 + Math.random() * 9000));
+    await runQuery(
+      `UPDATE users SET requires_otp_verification = 1, otp_code = ?, otp_expires_at = datetime('now', '+24 hours'), otp_sent_at = CURRENT_TIMESTAMP WHERE id = ?;`,
+      [newOtp, user.id]
+    );
+
+    const emailSent = await EmailService.sendOtpVerificationEmail(user, newOtp, user.otp_reason || 'Security Verification Required');
+    await logAudit(user.id, 'otp_resend', { emailSent }, req);
+
+    return res.json({
+      success: true,
+      message: 'A fresh 4-digit verification code has been sent to your email.'
+    });
+  } catch (err) {
+    console.error('Resend OTP Error:', err);
+    return res.status(500).json({ error: 'Server error resending OTP.' });
   }
 });
 

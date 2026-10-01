@@ -9,7 +9,8 @@ const AppState = {
   files: [],
   selectedPaths: [],
   viewMode: 'grid', // 'grid' or 'list'
-  currentTab: 'files', // 'dashboard', 'files', 'shares', 'profile', 'admin'
+  currentTab: 'dashboard', // Default to 'dashboard' on first open
+  otpSessionData: null,
   searchQuery: '',
   theme: localStorage.getItem('vps_theme') || 'dark',
   isDarkMode: (localStorage.getItem('vps_theme') || 'dark') === 'dark',
@@ -38,7 +39,7 @@ document.documentElement.classList.toggle('light', !AppState.isDarkMode);
 function showToast(message, type = 'info') {
   const container = document.getElementById('toast-container') || createToastContainer();
   const toast = document.createElement('div');
-  const bgClass = type === 'error' ? 'bg-red-600' : type === 'success' ? 'bg-emerald-600' : 'bg-blue-600';
+  const bgClass = type === 'error' ? 'bg-red-600' : type === 'success' ? 'bg-emerald-600' : 'bg-neutral-900 border border-white/20';
   
   toast.className = `${bgClass} text-white px-4 py-3 rounded-lg shadow-xl text-sm font-medium flex items-center gap-2 transform transition-all duration-300 translate-y-2 opacity-0 z-50`;
   toast.innerHTML = `<span>${escapeHtml(message)}</span>`;
@@ -73,6 +74,17 @@ function formatBytes(bytes) {
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
+
+// Global Loading Indicator Handler
+function setLoading(message = '', show = true) {
+  const globalLoader = document.getElementById('global-loading-indicator');
+  if (globalLoader) {
+    globalLoader.classList.toggle('hidden', !show);
+    const textEl = globalLoader.querySelector('[data-loading-text]');
+    if (textEl && message) textEl.textContent = message;
+  }
+}
+window.setLoading = setLoading;
 
 // Public application branding (title + favicon)
 async function loadPublicBranding() {
@@ -120,11 +132,18 @@ async function apiRequest(endpoint, options = {}) {
     const res = await fetch(`/api${endpoint}`, options);
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
+      if (data.requiresOtpVerification) {
+        AppState.otpSessionData = data;
+        window.location.hash = '#otp-verification';
+        renderApp();
+      }
       if (res.status === 401 && AppState.token) {
         logoutUser();
         showToast('Session expired. Please log in again.', 'error');
       }
-      throw new Error(data.error || 'API Request failed');
+      const err = new Error(data.error || 'API Request failed');
+      if (data.requiresOtpVerification) err.requiresOtpVerification = true;
+      throw err;
     }
     return data;
   } catch (err) {
@@ -238,6 +257,10 @@ function renderApp() {
     renderVerifyEmailChangeView(root);
     return;
   }
+  if (hash.startsWith('#otp-verification') || AppState.otpSessionData || (AppState.user && AppState.user.requires_otp_verification)) {
+    renderOtpVerificationView(root);
+    return;
+  }
 
   if (!AppState.token || !AppState.user) {
     renderAuthView(root);
@@ -248,6 +271,382 @@ function renderApp() {
   if (window.lucide) {
     lucide.createIcons();
   }
+}
+
+// ==========================================
+// 1a. BEAUTIFUL ANIMATED 4-DIGIT OTP SECURITY VERIFICATION VIEW
+// ==========================================
+async function renderOtpVerificationView(root) {
+  const otpData = AppState.otpSessionData || {};
+  const emailDisplay = otpData.email || AppState.user?.email || 'your registered email';
+  const reasonDisplay = otpData.reason || (AppState.user && AppState.user.otp_reason) || 'Account Security Review';
+
+  root.innerHTML = `
+    <div class="h-full min-h-full overflow-y-auto flex flex-col items-center justify-center p-4 theme-main-bg transition-colors duration-200 custom-scrollbar select-none">
+      
+      <!-- Top Theme Switcher on OTP Screen -->
+      <div class="w-full max-w-md flex justify-end mb-3">
+        <button onclick="toggleDarkMode()" title="Toggle Light / Dark Theme" class="px-3 py-1.5 flex items-center gap-2 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:border-black dark:hover:border-white shadow-sm transition-all">
+          <i data-lucide="${AppState.isDarkMode ? 'sun' : 'moon'}" class="w-3.5 h-3.5 text-amber-500 dark:text-white"></i>
+          <span>${AppState.isDarkMode ? 'Light Mode' : 'Dark Mode'}</span>
+        </button>
+      </div>
+
+      <div class="w-full max-w-md pitch-card p-8 rounded-3xl shadow-2xl border border-slate-200 dark:border-neutral-800 tab-pane-enter my-auto text-center relative overflow-hidden">
+        
+        <!-- Header Shield Icon -->
+        <div class="inline-flex p-3.5 rounded-2xl zencloud-logo-badge mb-3 shadow-xl">
+          <i data-lucide="shield-check" class="w-8 h-8"></i>
+        </div>
+
+        <h1 class="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+          Security Verification
+        </h1>
+        <p class="text-xs text-slate-600 dark:text-slate-400 mt-1.5 leading-relaxed max-w-xs mx-auto">
+          Your account was placed under verification. We sent a 4-digit code to <b class="text-slate-900 dark:text-white font-mono font-semibold">${escapeHtml(emailDisplay)}</b>.
+        </p>
+
+        ${reasonDisplay ? `
+          <div class="mt-3 mb-1 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-600 dark:text-amber-300 text-[11px] font-medium inline-block max-w-full truncate" title="${escapeHtml(reasonDisplay)}">
+            <span class="font-bold uppercase tracking-wider text-[10px]">Reason:</span> ${escapeHtml(reasonDisplay)}
+          </div>
+        ` : ''}
+
+        <!-- Dynamic Error / Alert Banner Above the 4 Boxes -->
+        <div id="otp-error-container" class="min-h-[28px] mt-3 mb-1"></div>
+
+        <!-- 4-Digit Rotating / Merging Arena -->
+        <div id="otp-arena" class="otp-stage-container w-full max-w-[280px] mx-auto h-24 flex items-center justify-center gap-3 relative my-2">
+          
+          <div id="otp-slot-0" class="otp-box-slot">
+            <input type="text" maxlength="1" inputmode="numeric" autocomplete="one-time-code" id="otp-digit-0" class="otp-input-element w-[54px] h-[62px] rounded-2xl text-2xl font-mono font-extrabold text-center bg-slate-50 dark:bg-black text-slate-900 dark:text-white border-2 border-slate-300 dark:border-white/25 focus:border-black dark:focus:border-white focus:outline-none shadow-md" data-idx="0">
+          </div>
+
+          <div id="otp-slot-1" class="otp-box-slot">
+            <input type="text" maxlength="1" inputmode="numeric" id="otp-digit-1" class="otp-input-element w-[54px] h-[62px] rounded-2xl text-2xl font-mono font-extrabold text-center bg-slate-50 dark:bg-black text-slate-900 dark:text-white border-2 border-slate-300 dark:border-white/25 focus:border-black dark:focus:border-white focus:outline-none shadow-md" data-idx="1">
+          </div>
+
+          <div id="otp-slot-2" class="otp-box-slot">
+            <input type="text" maxlength="1" inputmode="numeric" id="otp-digit-2" class="otp-input-element w-[54px] h-[62px] rounded-2xl text-2xl font-mono font-extrabold text-center bg-slate-50 dark:bg-black text-slate-900 dark:text-white border-2 border-slate-300 dark:border-white/25 focus:border-black dark:focus:border-white focus:outline-none shadow-md" data-idx="2">
+          </div>
+
+          <div id="otp-slot-3" class="otp-box-slot">
+            <input type="text" maxlength="1" inputmode="numeric" id="otp-digit-3" class="otp-input-element w-[54px] h-[62px] rounded-2xl text-2xl font-mono font-extrabold text-center bg-slate-50 dark:bg-black text-slate-900 dark:text-white border-2 border-slate-300 dark:border-white/25 focus:border-black dark:focus:border-white focus:outline-none shadow-md" data-idx="3">
+          </div>
+
+          <!-- Central Fusion Tick Core (Merged Circle with Tick Sign) -->
+          <div id="otp-fusion-core" class="otp-fusion-core bg-white text-black shadow-2xl">
+            <svg class="w-8 h-8 text-black stroke-[3.5]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+          </div>
+        </div>
+
+        <!-- Success Message Placeholder -->
+        <div id="otp-success-container" class="min-h-[20px]"></div>
+
+        <!-- Action Buttons -->
+        <div class="mt-4 space-y-3">
+          <button id="otp-continue-btn" onclick="triggerOtpVerificationSubmit()" class="w-full zencloud-btn-primary bg-white hover:bg-neutral-200 text-black font-bold py-3 rounded-xl text-sm shadow-lg shadow-white/20 transition-all flex items-center justify-center gap-2">
+            <span>Continue</span>
+            <i data-lucide="arrow-right" class="w-4 h-4"></i>
+          </button>
+
+          <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 pt-1">
+            <button id="otp-resend-btn" onclick="handleOtpResend()" class="hover:text-black dark:hover:text-white transition-colors underline">
+              Resend OTP Code
+            </button>
+            <button onclick="cancelOtpAndLogout()" class="hover:text-red-500 transition-colors">
+              Back to Login
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  `;
+
+  if (window.lucide) lucide.createIcons();
+
+  setupOtpInputHandlers();
+}
+
+function setupOtpInputHandlers() {
+  const inputs = [0, 1, 2, 3].map(i => document.getElementById(`otp-digit-${i}`)).filter(Boolean);
+  if (inputs.length < 4) return;
+
+  // Auto focus first input
+  setTimeout(() => inputs[0]?.focus(), 100);
+
+  inputs.forEach((input, idx) => {
+    input.addEventListener('input', (e) => {
+      const val = e.target.value.replace(/\D/g, '');
+      e.target.value = val ? val.slice(-1) : '';
+
+      // Clear any existing error state
+      document.getElementById('otp-error-container').innerHTML = '';
+      inputs.forEach(inp => inp.classList.remove('border-red-500', 'otp-error-shake'));
+
+      if (e.target.value && idx < 3) {
+        inputs[idx + 1].focus();
+      }
+
+      // If all 4 boxes have digits, trigger verification automatically
+      const fullOtp = inputs.map(i => i.value).join('');
+      if (fullOtp.length === 4) {
+        triggerOtpVerificationSubmit();
+      }
+    });
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Backspace') {
+        if (!e.target.value && idx > 0) {
+          inputs[idx - 1].focus();
+          inputs[idx - 1].value = '';
+        }
+      } else if (e.key === 'ArrowLeft' && idx > 0) {
+        inputs[idx - 1].focus();
+      } else if (e.key === 'ArrowRight' && idx < 3) {
+        inputs[idx + 1].focus();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        triggerOtpVerificationSubmit();
+      }
+    });
+
+    input.addEventListener('paste', (e) => {
+      e.preventDefault();
+      const pasteData = (e.clipboardData || window.clipboardData).getData('text');
+      const cleanDigits = pasteData.replace(/\D/g, '').slice(0, 4);
+      if (!cleanDigits) return;
+
+      for (let i = 0; i < cleanDigits.length; i++) {
+        if (inputs[i]) inputs[i].value = cleanDigits[i];
+      }
+      if (cleanDigits.length < 4 && inputs[cleanDigits.length]) {
+        inputs[cleanDigits.length].focus();
+      } else if (cleanDigits.length === 4) {
+        inputs[3].focus();
+        triggerOtpVerificationSubmit();
+      }
+    });
+  });
+}
+
+let isOtpVerifying = false;
+async function triggerOtpVerificationSubmit() {
+  if (isOtpVerifying) return;
+
+  const inputs = [0, 1, 2, 3].map(i => document.getElementById(`otp-digit-${i}`)).filter(Boolean);
+  const otpCode = inputs.map(i => (i ? i.value.trim() : '')).join('');
+
+  const errorContainer = document.getElementById('otp-error-container');
+  const continueBtn = document.getElementById('otp-continue-btn');
+  const fusionCore = document.getElementById('otp-fusion-core');
+
+  if (otpCode.length !== 4) {
+    if (errorContainer) {
+      errorContainer.innerHTML = `
+        <div class="text-red-400 bg-red-500/10 border border-red-500/25 px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 animate-slide-down">
+          <i data-lucide="alert-circle" class="w-4 h-4 text-red-400 shrink-0"></i>
+          <span>Please enter all 4 verification digits.</span>
+        </div>
+      `;
+      if (window.lucide) lucide.createIcons();
+    }
+    const emptyIdx = inputs.findIndex(i => !i.value);
+    if (emptyIdx >= 0 && inputs[emptyIdx]) inputs[emptyIdx].focus();
+    return;
+  }
+
+  isOtpVerifying = true;
+  if (errorContainer) errorContainer.innerHTML = '';
+  if (continueBtn) {
+    continueBtn.disabled = true;
+    continueBtn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> <span>Verifying...</span>`;
+    if (window.lucide) lucide.createIcons();
+  }
+
+  // 1. Trigger Clean Circular Orbit and Merge Animation on the 4 boxes
+  for (let i = 0; i < 4; i++) {
+    const slot = document.getElementById(`otp-slot-${i}`);
+    if (slot) {
+      slot.className = `otp-box-slot otp-anim-orbit-${i}`;
+    }
+    if (inputs[i]) inputs[i].disabled = true;
+  }
+
+  // 2. Show Central Fusion Core as boxes rotate & merge inwards
+  setTimeout(() => {
+    if (fusionCore) fusionCore.classList.add('otp-fusion-active');
+  }, 750);
+
+  // 3. Make API verification call in parallel with the circular merge animation
+  const tempToken = AppState.otpSessionData?.tempToken || AppState.token;
+  const startTime = Date.now();
+
+  try {
+    const res = await fetch('/api/auth/verify-otp', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(tempToken ? { 'Authorization': `Bearer ${tempToken}` } : {})
+      },
+      body: JSON.stringify({ otp: otpCode, tempToken })
+    });
+
+    const data = await res.json().catch(() => ({}));
+    const elapsed = Date.now() - startTime;
+    const minWait = Math.max(0, 1300 - elapsed); // Let the merge animation complete gracefully
+
+    await new Promise(r => setTimeout(r, minWait));
+
+    if (!res.ok) {
+      throw new Error(data.error || 'Incorrect verification code.');
+    }
+
+    // SUCCESS: Merged core combines into radiant green badge with tick sign!
+    if (fusionCore) {
+      fusionCore.className = 'otp-fusion-core otp-success-glow';
+    }
+
+    const successContainer = document.getElementById('otp-success-container');
+    if (successContainer) {
+      successContainer.innerHTML = `
+        <div class="text-emerald-400 font-bold text-sm mt-2 animate-slide-down flex items-center justify-center gap-1.5">
+          <i data-lucide="check-circle" class="w-4 h-4 text-emerald-400"></i>
+          <span>Verification Successful! Unlocking account...</span>
+        </div>
+      `;
+      if (window.lucide) lucide.createIcons();
+    }
+
+    // Update global state with active session
+    AppState.token = data.token;
+    AppState.user = data.user;
+    AppState.otpSessionData = null;
+    AppState.currentTab = 'dashboard';
+    localStorage.setItem('vps_token', data.token);
+    localStorage.setItem('vps_user', JSON.stringify(data.user));
+
+    showToast('Identity verified successfully! Welcome to ZenCloud.', 'success');
+
+    // Smooth transition to Dashboard
+    setTimeout(() => {
+      isOtpVerifying = false;
+      window.location.hash = '';
+      renderApp();
+    }, 950);
+
+  } catch (err) {
+    const elapsed = Date.now() - startTime;
+    const minWait = Math.max(0, 1300 - elapsed);
+    await new Promise(r => setTimeout(r, minWait));
+
+    // ERROR: 4 boxes undergo dramatic REPULSION outward and recoil back to normal state
+    if (fusionCore) {
+      fusionCore.className = 'otp-fusion-core';
+    }
+
+    for (let i = 0; i < 4; i++) {
+      const slot = document.getElementById(`otp-slot-${i}`);
+      if (slot) {
+        slot.className = `otp-box-slot otp-anim-repulse-${i}`;
+      }
+    }
+
+    // Display clear, prominent error text above the boxes
+    if (errorContainer) {
+      errorContainer.innerHTML = `
+        <div class="text-red-400 bg-red-500/10 border border-red-500/30 px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 animate-slide-down">
+          <i data-lucide="alert-triangle" class="w-4 h-4 text-red-400 shrink-0"></i>
+          <span>${escapeHtml(err.message || 'Incorrect verification code. Please try again.')}</span>
+        </div>
+      `;
+      if (window.lucide) lucide.createIcons();
+    }
+
+    // Reset slots and inputs after repulsion spring settles
+    setTimeout(() => {
+      for (let i = 0; i < 4; i++) {
+        const slot = document.getElementById(`otp-slot-${i}`);
+        if (slot) slot.className = 'otp-box-slot';
+        if (inputs[i]) {
+          inputs[i].disabled = false;
+          inputs[i].value = '';
+          inputs[i].classList.add('border-red-500', 'otp-error-shake');
+        }
+      }
+      if (inputs[0]) inputs[0].focus();
+      if (continueBtn) {
+        continueBtn.disabled = false;
+        continueBtn.innerHTML = `<span>Continue</span><i data-lucide="arrow-right" class="w-4 h-4"></i>`;
+        if (window.lucide) lucide.createIcons();
+      }
+      isOtpVerifying = false;
+    }, 850);
+  }
+}
+
+async function handleOtpResend() {
+  const btn = document.getElementById('otp-resend-btn');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Sending new OTP...';
+  }
+
+  try {
+    const tempToken = AppState.otpSessionData?.tempToken || AppState.token;
+    const res = await fetch('/api/auth/resend-otp', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(tempToken ? { 'Authorization': `Bearer ${tempToken}` } : {})
+      },
+      body: JSON.stringify({ tempToken })
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Failed to resend code.');
+
+    showToast(data.message || 'A fresh 4-digit verification code was sent to your email.', 'success');
+
+    // Clear inputs and focus first box
+    [0, 1, 2, 3].forEach(i => {
+      const inp = document.getElementById(`otp-digit-${i}`);
+      if (inp) { inp.value = ''; inp.classList.remove('border-red-500'); }
+    });
+    document.getElementById('otp-digit-0')?.focus();
+
+    // Start 30s countdown
+    let seconds = 30;
+    const timer = setInterval(() => {
+      seconds--;
+      if (seconds > 0) {
+        if (btn) btn.textContent = `Resend available in ${seconds}s`;
+      } else {
+        clearInterval(timer);
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Resend OTP Code';
+        }
+      }
+    }, 1000);
+
+  } catch (err) {
+    showToast(err.message, 'error');
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Resend OTP Code';
+    }
+  }
+}
+
+function cancelOtpAndLogout() {
+  AppState.otpSessionData = null;
+  logoutUser();
+  window.location.hash = '';
+  renderApp();
 }
 
 async function renderPublicShareView(root) {
@@ -280,7 +679,7 @@ async function renderPublicShareView(root) {
         ${data.expiresAt ? `<div class="text-xs text-amber-300">Expires: ${new Date(data.expiresAt).toLocaleString()}</div>` : '<div class="text-xs text-emerald-300">No expiration</div>'}
       </div>
       <div class="flex flex-wrap gap-2 mt-4">
-        ${canPreview ? `<button onclick="openPublicSharePreview('${encodeURIComponent(token)}','${escapeHtml(data.fileName)}','${escapeHtml(data.mimeType || '')}')" class="inline-flex items-center gap-2 bg-sky-600 hover:bg-sky-500 text-white font-bold px-4 py-2.5 rounded-lg text-sm"><i data-lucide="${String(data.mimeType || '').startsWith('video/') ? 'play-circle' : 'image'}" class="w-4 h-4"></i> Preview</button>` : ''}
+        ${canPreview ? `<button onclick="openPublicSharePreview('${encodeURIComponent(token)}','${escapeHtml(data.fileName)}','${escapeHtml(data.mimeType || '')}')" class="inline-flex items-center gap-2 bg-white hover:bg-neutral-200 text-black font-bold px-4 py-2.5 rounded-lg text-sm transition-all"><i data-lucide="${String(data.mimeType || '').startsWith('video/') ? 'play-circle' : 'image'}" class="w-4 h-4"></i> Preview</button>` : ''}
         <a href="/api/share/public/${encodeURIComponent(token)}" class="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 py-2.5 rounded-lg text-sm"><i data-lucide="download" class="w-4 h-4"></i> Download ${data.isDirectory ? 'Folder' : 'File'}</a>
       </div>`;
     if (window.lucide) lucide.createIcons();
@@ -444,7 +843,7 @@ function setupVideoPlayer(videoId, directUrl, fallbackUrl, safeFallbackUrl, down
       notice.innerHTML = `
         <div>This video's format isn't supported by your browser/GPU on this device, even after converting it. This is usually a browser hardware-acceleration issue, not a problem with the file.</div>
         <div class="flex flex-wrap gap-2">
-          ${downloadUrl ? `<a href="${downloadUrl}" class="inline-flex items-center gap-1.5 bg-cyan-600 hover:bg-cyan-500 text-white font-semibold px-3 py-1.5 rounded-lg"><i data-lucide="download" class="w-3.5 h-3.5"></i> Download instead</a>` : ''}
+          ${downloadUrl ? `<a href="${downloadUrl}" class="inline-flex items-center gap-1.5 bg-white hover:bg-neutral-200 text-black font-semibold px-3 py-1.5 rounded-lg text-xs transition-all"><i data-lucide="download" class="w-3.5 h-3.5"></i> Download instead</a>` : ''}
         </div>`;
       body.appendChild(notice);
       if (window.lucide) lucide.createIcons();
@@ -509,7 +908,7 @@ async function renderResetPasswordView(root) {
     <div class="h-full min-h-full overflow-y-auto flex items-center justify-center p-4 bg-slate-950 custom-scrollbar">
       <div class="w-full max-w-md pitch-card p-8 rounded-2xl shadow-2xl border border-slate-800 text-left my-auto">
         <div class="flex items-center gap-3 mb-6">
-          <div class="w-10 h-10 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400"><i data-lucide="key" class="w-5 h-5"></i></div>
+          <div class="w-10 h-10 rounded-xl zencloud-logo-badge"><i data-lucide="key" class="w-5 h-5"></i></div>
           <div><h1 class="text-lg font-bold text-white">Reset Password</h1><p class="text-xs text-slate-500">Enter your new account password</p></div>
         </div>
         <form onsubmit="handleResetPasswordSubmit(event, '${encodeURIComponent(token || '')}')" class="space-y-4">
@@ -521,7 +920,7 @@ async function renderResetPasswordView(root) {
             <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Confirm New Password</label>
             <input type="password" id="reset-confirm-pass" required minlength="6" class="w-full pitch-input rounded-xl px-4 py-2.5 text-sm focus:outline-none" placeholder="••••••••">
           </div>
-          <button type="submit" class="w-full bg-sky-600 hover:bg-sky-500 text-white font-medium py-2.5 rounded-xl text-sm shadow-md shadow-sky-600/25 transition-all">Update Password</button>
+          <button type="submit" class="w-full zencloud-btn-primary bg-white hover:bg-neutral-200 text-black font-bold py-2.5 rounded-xl text-sm shadow-md shadow-white/20 transition-all">Update Password</button>
         </form>
         <div class="mt-4 text-center">
           <button onclick="window.location.hash=''; renderApp();" class="text-xs text-slate-400 hover:text-white">Back to Login</button>
@@ -563,7 +962,7 @@ function openForgotPasswordModal() {
   modal.innerHTML = `
     <div class="pitch-card w-full max-w-md p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl">
       <div class="flex items-center justify-between mb-4">
-        <h3 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2"><i data-lucide="help-circle" class="w-5 h-5 text-sky-500"></i> Forgot Password</h3>
+        <h3 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2"><i data-lucide="help-circle" class="w-5 h-5 text-slate-700 dark:text-white"></i> Forgot Password</h3>
         <button type="button" onclick="document.getElementById('forgot-pass-modal')?.remove()" class="text-slate-400 hover:text-slate-900 dark:hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
       </div>
       <p class="text-xs text-slate-600 dark:text-slate-400 mb-4">Enter your registered email address and we will send you a password reset link.</p>
@@ -574,7 +973,7 @@ function openForgotPasswordModal() {
         </div>
         <div class="flex justify-end gap-2 pt-2">
           <button type="button" onclick="document.getElementById('forgot-pass-modal')?.remove()" class="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold">Cancel</button>
-          <button type="submit" class="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold">Send Reset Link</button>
+          <button type="submit" class="px-4 py-2 rounded-xl zencloud-btn-primary bg-white hover:bg-neutral-200 text-black font-bold text-xs">Send Reset Link</button>
         </div>
       </form>
     </div>
@@ -627,7 +1026,7 @@ async function renderVerifyEmailView(root) {
     }
     document.getElementById('verify-email-status').innerHTML = `
       <div class="text-emerald-300 font-semibold">${escapeHtml(data.message)}</div>
-      <button onclick="window.location.hash=''; renderApp()" class="mt-5 bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs px-4 py-2.5 rounded-lg">Continue</button>`;
+      <button onclick="window.location.hash=''; renderApp()" class="mt-5 zencloud-btn-primary bg-white hover:bg-neutral-200 text-black font-bold text-xs px-4 py-2.5 rounded-lg">Continue</button>`;
   } catch (err) {
     document.getElementById('verify-email-status').innerHTML = `
       <div class="text-red-300 font-semibold">${escapeHtml(err.message)}</div>
@@ -658,7 +1057,7 @@ async function renderVerifyEmailChangeView(root) {
     if (!res.ok) throw new Error(data.error || 'Verification failed.');
     document.getElementById('verify-change-status').innerHTML = `
       <div class="text-emerald-300 font-semibold">${escapeHtml(data.message)}</div>
-      <button onclick="window.location.hash=''; renderApp()" class="mt-5 bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs px-4 py-2.5 rounded-lg">Continue</button>`;
+      <button onclick="window.location.hash=''; renderApp()" class="mt-5 zencloud-btn-primary bg-white hover:bg-neutral-200 text-black font-bold text-xs px-4 py-2.5 rounded-lg">Continue</button>`;
   } catch (err) {
     document.getElementById('verify-change-status').innerHTML = `
       <div class="text-red-300 font-semibold">${escapeHtml(err.message)}</div>
@@ -675,8 +1074,8 @@ function renderAuthView(container) {
       
       <!-- Top Theme Switcher on Auth Screen -->
       <div class="w-full max-w-md flex justify-end mb-3">
-        <button onclick="toggleDarkMode()" title="Toggle Light / Dark Theme" class="px-3 py-1.5 flex items-center gap-2 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:border-sky-500 hover:text-sky-600 dark:hover:text-sky-400 shadow-sm transition-all">
-          <i data-lucide="${AppState.isDarkMode ? 'sun' : 'moon'}" class="w-3.5 h-3.5 text-amber-500 dark:text-sky-400"></i>
+        <button onclick="toggleDarkMode()" title="Toggle Light / Dark Theme" class="px-3 py-1.5 flex items-center gap-2 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:border-black dark:hover:border-white shadow-sm transition-all">
+          <i data-lucide="${AppState.isDarkMode ? 'sun' : 'moon'}" class="w-3.5 h-3.5 text-amber-500 dark:text-white"></i>
           <span>${AppState.isDarkMode ? 'Light Mode' : 'Dark Mode'}</span>
         </button>
       </div>
@@ -684,15 +1083,18 @@ function renderAuthView(container) {
       <div class="w-full max-w-md pitch-card p-8 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 tab-pane-enter my-auto">
         
         <div class="text-center mb-6">
-          <div class="inline-flex p-3 rounded-2xl bg-sky-500/15 text-sky-600 dark:text-sky-400 mb-3 border border-sky-500/20 shadow-sm">
-            <i data-lucide="hard-drive" class="w-8 h-8"></i>
+          <div class="inline-flex p-3.5 rounded-2xl zencloud-logo-badge mb-3 shadow-xl">
+            <i data-lucide="cloud-lightning" class="w-8 h-8"></i>
           </div>
-          <h1 class="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">ZenStorage</h1>
-          <p class="text-slate-500 dark:text-slate-400 text-xs mt-1">VPS SFTP Cloud & S3/Blob API Cluster</p>
+          <h1 class="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight flex items-center justify-center gap-2">
+            ZenCloud
+            <span class="text-xs font-bold uppercase tracking-wider bg-slate-200 text-slate-800 dark:bg-white/10 dark:text-white border border-slate-300 dark:border-white/20 px-2 py-0.5 rounded-lg">Storage</span>
+          </h1>
+          <p class="text-slate-500 dark:text-slate-400 text-xs mt-1">VPS SFTP Storage & Inbuilt Developer Studio</p>
         </div>
 
-        <div class="flex border-b border-slate-200 dark:border-slate-800 mb-6">
-          <button id="tab-login-btn" onclick="switchAuthTab('login')" class="flex-1 py-2 text-sm font-semibold text-sky-600 dark:text-sky-400 border-b-2 border-sky-600 dark:border-sky-400 transition-all">Login</button>
+        <div class="flex border-b border-slate-200 dark:border-neutral-800 mb-6">
+          <button id="tab-login-btn" onclick="switchAuthTab('login')" class="flex-1 py-2 text-sm font-semibold text-slate-900 dark:text-white border-b-2 border-slate-900 dark:border-white transition-all">Login</button>
           <button id="tab-register-btn" onclick="switchAuthTab('register')" class="flex-1 py-2 text-sm font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-all">Register</button>
         </div>
 
@@ -711,10 +1113,10 @@ function renderAuthView(container) {
 
             <div class="flex justify-between items-center text-xs">
               <span class="text-slate-400 text-[11px]">Default: admin / Admin@123456</span>
-              <button type="button" onclick="openForgotPasswordModal()" class="text-sky-600 dark:text-sky-400 hover:underline">Forgot password?</button>
+              <button type="button" onclick="openForgotPasswordModal()" class="text-slate-600 dark:text-slate-300 hover:text-black dark:hover:text-white underline">Forgot password?</button>
             </div>
 
-            <button type="submit" class="w-full bg-sky-600 hover:bg-sky-500 text-white font-medium py-2.5 rounded-xl text-sm shadow-md shadow-sky-600/25 transition-all flex items-center justify-center gap-2">
+            <button type="submit" class="w-full zencloud-btn-primary bg-white hover:bg-neutral-200 text-black font-bold py-2.5 rounded-xl text-sm shadow-md shadow-white/20 transition-all flex items-center justify-center gap-2">
               <i data-lucide="log-in" class="w-4 h-4"></i> Sign In
             </button>
           </div>
@@ -767,12 +1169,12 @@ function switchAuthTab(tab) {
   if (tab === 'login') {
     loginForm.classList.remove('hidden');
     regForm.classList.add('hidden');
-    loginBtn.className = 'flex-1 py-2 text-sm font-semibold text-sky-600 dark:text-sky-400 border-b-2 border-sky-600 dark:border-sky-400 transition-all';
+    loginBtn.className = 'flex-1 py-2 text-sm font-semibold text-slate-900 dark:text-white border-b-2 border-slate-900 dark:border-white transition-all';
     regBtn.className = 'flex-1 py-2 text-sm font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-all';
   } else {
     loginForm.classList.add('hidden');
     regForm.classList.remove('hidden');
-    regBtn.className = 'flex-1 py-2 text-sm font-semibold text-sky-600 dark:text-sky-400 border-b-2 border-sky-600 dark:border-sky-400 transition-all';
+    regBtn.className = 'flex-1 py-2 text-sm font-semibold text-slate-900 dark:text-white border-b-2 border-slate-900 dark:border-white transition-all';
     loginBtn.className = 'flex-1 py-2 text-sm font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-all';
   }
 }
@@ -788,14 +1190,29 @@ async function handleLoginSubmit(e) {
       body: { usernameOrEmail, password }
     });
 
+    if (data.requiresOtp) {
+      AppState.otpSessionData = data;
+      AppState.currentTab = 'dashboard';
+      window.location.hash = '#otp-verification';
+      renderApp();
+      return;
+    }
+
     AppState.token = data.token;
     AppState.user = data.user;
+    AppState.currentTab = 'dashboard';
     localStorage.setItem('vps_token', data.token);
     localStorage.setItem('vps_user', JSON.stringify(data.user));
 
     showToast('Logged in successfully!', 'success');
     renderApp();
   } catch (err) {
+    if (err.requiresOtpVerification) {
+      AppState.otpSessionData = err;
+      window.location.hash = '#otp-verification';
+      renderApp();
+      return;
+    }
     showToast(err.message, 'error');
   }
 }
@@ -828,109 +1245,195 @@ function renderDashboardLayout(container) {
   const isDark = AppState.isDarkMode;
 
   container.innerHTML = `
-    <div class="h-full md:h-screen w-full flex flex-col md:flex-row theme-main-bg text-slate-900 dark:text-slate-100 transition-colors duration-200 overflow-hidden">
-      <!-- Sidebar -->
-      <aside id="sidebar" class="w-full md:w-64 h-auto md:h-screen theme-sidebar border-r flex flex-col justify-between p-4 flex-shrink-0 transition-colors duration-200 md:overflow-y-auto custom-scrollbar">
-        <div>
-          <!-- Brand Logo -->
-          <div class="brand-block flex items-center gap-3 px-2 py-3 mb-6">
-            <div class="p-2 bg-sky-500/15 text-sky-600 dark:text-sky-400 rounded-xl border border-sky-500/30 shadow-sm">
-              <i data-lucide="hard-drive" class="w-6 h-6"></i>
-            </div>
-            <div>
-              <h2 class="font-bold text-slate-900 dark:text-white leading-none">ZenStorage</h2>
-              <span class="text-xs text-slate-500 dark:text-slate-400">SFTP Cloud Storage</span>
-            </div>
+    <div class="h-full w-full flex flex-col theme-main-bg text-slate-900 dark:text-slate-100 transition-colors duration-200 overflow-hidden relative">
+      
+      <!-- Minimalist Pitch Black & Light Mode Responsive Top Status & Utility Bar -->
+      <header id="twilight-top-bar" class="twilight-navbar w-full px-4 sm:px-6 py-2.5 z-40 sticky top-0 flex items-center justify-between gap-3">
+        <!-- Left: ZenCloud Minimal Brand Mark -->
+        <div class="flex items-center gap-2.5 shrink-0 cursor-pointer select-none group" onclick="navigateTab('dashboard')">
+          <div class="zencloud-logo-badge p-1.5 sm:p-2 rounded-xl group-hover:scale-105 transition-all">
+            <i data-lucide="cloud-lightning" class="w-4 h-4"></i>
           </div>
-
-          <!-- Nav Items -->
-          <nav class="space-y-1">
-            <button onclick="navigateTab('dashboard')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${AppState.currentTab === 'dashboard' ? 'bg-sky-600 text-white shadow-md shadow-sky-600/25' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/80 hover:text-slate-900 dark:hover:text-white'}">
-              <i data-lucide="layout-dashboard" class="w-4 h-4"></i> Dashboard
-            </button>
-            <button onclick="navigateTab('files')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${AppState.currentTab === 'files' ? 'bg-sky-600 text-white shadow-md shadow-sky-600/25' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/80 hover:text-slate-900 dark:hover:text-white'}">
-              <i data-lucide="folder" class="w-4 h-4"></i> File Manager
-            </button>
-            <button onclick="navigateTab('s3cluster')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${AppState.currentTab === 's3cluster' ? 'bg-sky-600 text-white shadow-md shadow-sky-600/25' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/80 hover:text-slate-900 dark:hover:text-white'}">
-              <i data-lucide="cloud-lightning" class="w-4 h-4"></i> S3 & Blob API
-            </button>
-            <button onclick="navigateTab('shares')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${AppState.currentTab === 'shares' ? 'bg-sky-600 text-white shadow-md shadow-sky-600/25' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/80 hover:text-slate-900 dark:hover:text-white'}">
-              <i data-lucide="share-2" class="w-4 h-4"></i> Share Links
-            </button>
-            <button onclick="navigateTab('profile')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${AppState.currentTab === 'profile' ? 'bg-sky-600 text-white shadow-md shadow-sky-600/25' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/80 hover:text-slate-900 dark:hover:text-white'}">
-              <i data-lucide="user" class="w-4 h-4"></i> Profile & IP Info
-            </button>
-
-            ${AppState.user && AppState.user.role === 'admin' ? `
-              <div class="pt-4 mt-4 border-t border-slate-200 dark:border-slate-800">
-                <span class="px-3 text-[10px] uppercase font-bold text-amber-500 tracking-wider">Admin Portal</span>
-                <button onclick="navigateTab('admin')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all mt-1 ${AppState.currentTab === 'admin' ? 'bg-amber-600 text-white shadow-md shadow-amber-600/25' : 'text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30'}">
-                  <i data-lucide="shield-alert" class="w-4 h-4"></i> System Admin
-                </button>
-              </div>
-            ` : ''}
-          </nav>
-        </div>
-
-        <!-- Storage Quota Widget -->
-        <div class="desktop-quota mt-8 pt-4 border-t border-slate-200 dark:border-slate-800 space-y-3">
-          <div id="sidebar-quota-widget" class="pitch-card p-3 rounded-xl">
-            <div class="flex justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
-              <span>Storage Used</span>
-              <span id="quota-percent-text" class="font-semibold text-slate-700 dark:text-slate-300">0%</span>
-            </div>
-            <div class="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-2 overflow-hidden">
-              <div id="quota-bar" class="bg-gradient-to-r from-sky-500 to-cyan-400 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
-            </div>
-            <div class="text-[11px] text-slate-500 dark:text-slate-400 mt-2 text-center" id="quota-detail-text">
-              Loading...
-            </div>
-          </div>
-
-          <div id="mobile-account" class="flex items-center justify-between px-2 pt-2">
-            <div class="flex items-center gap-2">
-              <div class="w-8 h-8 rounded-full bg-sky-500/20 text-sky-600 dark:text-sky-400 flex items-center justify-center text-xs font-bold uppercase border border-sky-500/30">
-                ${AppState.user.username.substring(0, 2)}
-              </div>
-              <div class="text-xs">
-                <div class="font-bold text-slate-900 dark:text-white truncate max-w-[100px]">${escapeHtml(AppState.user.name)}</div>
-                <div class="text-slate-500 dark:text-slate-400 capitalize">${AppState.user.role}</div>
-              </div>
-            </div>
-
-            <button onclick="logoutUser()" title="Logout" class="p-2 text-slate-400 hover:text-red-500 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">
-              <i data-lucide="log-out" class="w-4 h-4"></i>
-            </button>
+          <div>
+            <h1 class="font-bold text-sm sm:text-base tracking-tight text-slate-900 dark:text-white leading-none">
+              ZenCloud
+            </h1>
+            <div class="text-[11px] text-slate-500 dark:text-slate-400 leading-none mt-1">Cloud Storage & Studio</div>
           </div>
         </div>
-      </aside>
 
-      <!-- Main Content Container -->
-      <main class="flex-1 flex flex-col min-w-0 h-full overflow-hidden theme-main-bg transition-colors duration-200">
-        <!-- Top Nav Bar -->
-        <header id="main-header" class="theme-header border-b px-4 sm:px-6 py-3.5 backdrop-blur-md space-y-3 shrink-0 transition-colors duration-200">
-          <div class="flex items-center justify-between gap-3">
-            <div class="flex items-center gap-3 min-w-0">
-              <h1 class="text-lg font-bold text-slate-900 dark:text-white capitalize flex items-center gap-2 truncate">
-                ${AppState.currentTab === 'files' ? 'File Manager' : AppState.currentTab === 's3cluster' ? 'S3 & Vercel Blob Cluster API' : AppState.currentTab}
-              </h1>
-            </div>
+        <!-- Right Controls: Search, Create, Quota, Theme & Profile -->
+        <div class="flex items-center gap-2 sm:gap-2.5">
+          
+          <!-- Quick Search Bar (Ctrl+K) -->
+          <button onclick="openTwilightCommandPalette()" class="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl twilight-pill text-slate-600 dark:text-slate-300 hover:text-black dark:hover:text-white transition-all text-xs group" title="Quick Search (Ctrl+K)">
+            <i data-lucide="search" class="w-3.5 h-3.5 text-slate-400 group-hover:text-black dark:group-hover:text-white"></i>
+            <span class="text-slate-600 dark:text-slate-300 group-hover:text-black dark:group-hover:text-white hidden xl:inline">Search & Actions</span>
+            <kbd class="px-1.5 py-0.5 text-[10px] font-mono bg-slate-100 dark:bg-[#141414] border border-slate-200 dark:border-white/10 rounded text-slate-600 dark:text-slate-300">⌘K</kbd>
+          </button>
 
-            <div class="flex items-center gap-3 shrink-0">
-              <button onclick="toggleDarkMode()" title="Toggle Theme" class="px-3 py-1.5 flex items-center gap-2 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:border-sky-500 hover:text-sky-600 dark:hover:text-sky-400 shadow-sm transition-all">
-                <i data-lucide="${AppState.isDarkMode ? 'sun' : 'moon'}" class="w-4 h-4 text-amber-500 dark:text-sky-400"></i>
-                <span>${AppState.isDarkMode ? 'Light Mode' : 'Dark Mode'}</span>
+          <!-- Quick Create Button (+ Create Dropdown) -->
+          <div class="relative">
+            <button id="twilight-create-btn" onclick="toggleTwilightCreateMenu(event)" class="twilight-btn-glow text-black text-xs font-semibold px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl flex items-center gap-1.5 transition-all shrink-0">
+              <i data-lucide="plus" class="w-4 h-4"></i>
+              <span class="hidden sm:inline">New</span>
+              <i data-lucide="chevron-down" class="w-3 h-3 opacity-60"></i>
+            </button>
+            
+            <!-- Twilight Create Dropdown Menu -->
+            <div id="twilight-create-menu" class="hidden absolute right-0 mt-2 w-56 rounded-2xl bg-white dark:bg-[#0c0c0e] border border-slate-200 dark:border-white/10 shadow-xl p-1.5 z-50 text-xs backdrop-blur-xl animate-scale-in">
+              <div class="px-3 py-1.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-100 dark:border-white/5 mb-1">
+                Create Resource
+              </div>
+              <button onclick="openCreateNewFileModal(); closeTwilightMenus();" class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-left text-slate-700 dark:text-slate-200 hover:text-black dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 transition-all">
+                <i data-lucide="file-plus" class="w-4 h-4 text-slate-500"></i>
+                <div>
+                  <div class="font-medium text-slate-900 dark:text-slate-100">New File</div>
+                  <div class="text-[10px] text-slate-500">.html, .js, .json, .md</div>
+                </div>
+              </button>
+              <button onclick="openCreateFolderModal(); closeTwilightMenus();" class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-left text-slate-700 dark:text-slate-200 hover:text-black dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 transition-all">
+                <i data-lucide="folder-plus" class="w-4 h-4 text-slate-500"></i>
+                <div>
+                  <div class="font-medium text-slate-900 dark:text-slate-100">New Folder</div>
+                  <div class="text-[10px] text-slate-500">Directory in current path</div>
+                </div>
+              </button>
+              <button onclick="triggerNavbarFileUpload(); closeTwilightMenus();" class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-left text-slate-700 dark:text-slate-200 hover:text-black dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 transition-all">
+                <i data-lucide="upload" class="w-4 h-4 text-slate-500"></i>
+                <div>
+                  <div class="font-medium text-slate-900 dark:text-slate-100">Upload Files</div>
+                  <div class="text-[10px] text-slate-500">Direct upload</div>
+                </div>
               </button>
             </div>
           </div>
-          <div id="email-verification-banner"></div>
-        </header>
 
-        <!-- Main Body Tab Views -->
-        <div id="tab-content-area" class="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 custom-scrollbar tab-pane-enter">
+          <!-- Compact Storage Quota Gauge -->
+          <div id="sidebar-quota-widget" class="hidden xl:flex items-center gap-2.5 twilight-pill px-3 py-1.5 rounded-xl text-xs">
+            <div class="flex items-center gap-1.5 text-slate-600 dark:text-slate-400">
+              <i data-lucide="database" class="w-3.5 h-3.5 text-slate-500"></i>
+              <span id="quota-percent-text" class="font-semibold text-slate-900 dark:text-white">0%</span>
+            </div>
+            <div class="w-16 bg-slate-200 dark:bg-neutral-800 rounded-full h-1.5 overflow-hidden">
+              <div id="quota-bar" class="bg-slate-900 dark:bg-white h-full rounded-full transition-all duration-300" style="width: 0%"></div>
+            </div>
+            <span id="quota-detail-text" class="text-[11px] text-slate-500 dark:text-slate-400 font-mono">0 GB</span>
+          </div>
+
+          <!-- Theme Switcher Button -->
+          <button onclick="toggleDarkMode()" title="Toggle Light / Dark Theme" class="p-2 rounded-xl twilight-pill text-slate-600 dark:text-slate-400 hover:text-black dark:hover:text-white transition-all">
+            <i data-lucide="${AppState.isDarkMode ? 'sun' : 'moon'}" class="w-4 h-4 text-amber-500 dark:text-slate-200"></i>
+          </button>
+
+          <!-- User Profile Button & Dropdown -->
+          <div class="relative">
+            <button id="twilight-user-btn" onclick="toggleTwilightUserMenu(event)" class="flex items-center gap-2 p-1 pl-1.5 sm:px-2.5 sm:py-1 rounded-xl twilight-pill transition-all text-xs">
+              <div class="zencloud-avatar-badge w-6 h-6 rounded-lg text-xs uppercase">
+                ${AppState.user.username.substring(0, 2)}
+              </div>
+              <div class="hidden sm:block text-left text-xs leading-none">
+                <div class="font-semibold text-slate-900 dark:text-white truncate max-w-[85px]">${escapeHtml(AppState.user.name || AppState.user.username)}</div>
+              </div>
+              <i data-lucide="chevron-down" class="w-3 h-3 text-slate-400 hidden sm:block"></i>
+            </button>
+
+            <!-- Twilight User Menu -->
+            <div id="twilight-user-menu" class="hidden absolute right-0 mt-2 w-60 rounded-2xl bg-white dark:bg-[#0c0c0e] border border-slate-200 dark:border-white/10 shadow-xl p-2 z-50 text-xs backdrop-blur-xl animate-scale-in">
+              <div class="p-2.5 rounded-xl bg-slate-50 dark:bg-neutral-900/60 border border-slate-100 dark:border-white/5 mb-1.5 flex items-center gap-2.5">
+                <div class="zencloud-avatar-badge w-8 h-8 rounded-lg text-xs uppercase shrink-0">
+                  ${AppState.user.username.substring(0, 2)}
+                </div>
+                <div class="min-w-0 flex-1">
+                  <div class="font-semibold text-slate-900 dark:text-white truncate">${escapeHtml(AppState.user.name || AppState.user.username)}</div>
+                  <div class="text-[11px] text-slate-500 truncate">${escapeHtml(AppState.user.email || AppState.user.username)}</div>
+                </div>
+              </div>
+              <button onclick="navigateTab('profile'); closeTwilightMenus();" class="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-left text-slate-700 dark:text-slate-300 hover:text-black dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 transition-all">
+                <i data-lucide="user" class="w-4 h-4 text-slate-400"></i> Account & Security
+              </button>
+              <button onclick="navigateTab('s3cluster'); closeTwilightMenus();" class="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-left text-slate-700 dark:text-slate-300 hover:text-black dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 transition-all">
+                <i data-lucide="key" class="w-4 h-4 text-slate-400"></i> S3 API Keys
+              </button>
+              <button onclick="navigateTab('files'); closeTwilightMenus();" class="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-left text-slate-700 dark:text-slate-300 hover:text-black dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 transition-all">
+                <i data-lucide="folder" class="w-4 h-4 text-slate-400"></i> File Explorer
+              </button>
+              <div class="my-1 border-t border-slate-100 dark:border-white/5"></div>
+              <button onclick="logoutUser()" class="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-left text-red-600 dark:text-red-400 hover:bg-red-500/10 transition-all">
+                <i data-lucide="log-out" class="w-4 h-4 text-red-500"></i> Sign Out
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </header>
+
+      <!-- Notification Banners -->
+      <div id="email-verification-banner" class="shrink-0 px-4 sm:px-6 pt-2"></div>
+
+      <!-- Main Content Area with Bottom Padding for Floating Dock -->
+      <main class="flex-1 flex flex-col min-w-0 h-full overflow-hidden theme-main-bg">
+        <div id="tab-content-area" class="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 pb-24 sm:pb-28 custom-scrollbar tab-pane-enter">
           <!-- Rendered dynamically -->
         </div>
       </main>
+
+      <!-- ZenCloud Minimal Floating Dock -->
+      <div class="fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-50 max-w-[96vw] w-auto pointer-events-auto">
+        <nav class="twilight-floating-dock flex items-center gap-1 px-2 py-1.5 rounded-full shadow-lg backdrop-blur-xl">
+          <!-- Dashboard Tab -->
+          <button onclick="navigateTab('dashboard')" class="twilight-dock-tab flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-medium transition-all ${AppState.currentTab === 'dashboard' ? 'twilight-tab-active' : 'twilight-tab-inactive'}" title="Dashboard">
+            <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+            <span class="hidden sm:inline">Dashboard</span>
+          </button>
+
+          <!-- Files Tab -->
+          <button onclick="navigateTab('files')" class="twilight-dock-tab flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-medium transition-all ${AppState.currentTab === 'files' ? 'twilight-tab-active' : 'twilight-tab-inactive'}" title="Files & Studio">
+            <i data-lucide="folder" class="w-4 h-4"></i>
+            <span class="hidden sm:inline">Files</span>
+          </button>
+
+          <!-- S3 & Blob API Tab -->
+          <button onclick="navigateTab('s3cluster')" class="twilight-dock-tab flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-medium transition-all ${AppState.currentTab === 's3cluster' ? 'twilight-tab-active' : 'twilight-tab-inactive'}" title="S3 API">
+            <i data-lucide="database" class="w-4 h-4"></i>
+            <span class="hidden sm:inline">S3 API</span>
+          </button>
+
+          <!-- Shares Tab -->
+          <button onclick="navigateTab('shares')" class="twilight-dock-tab flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-medium transition-all ${AppState.currentTab === 'shares' ? 'twilight-tab-active' : 'twilight-tab-inactive'}" title="Share Links">
+            <i data-lucide="share-2" class="w-4 h-4"></i>
+            <span class="hidden sm:inline">Shares</span>
+          </button>
+
+          <!-- Profile Tab -->
+          <button onclick="navigateTab('profile')" class="twilight-dock-tab flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-medium transition-all ${AppState.currentTab === 'profile' ? 'twilight-tab-active' : 'twilight-tab-inactive'}" title="Account Profile">
+            <i data-lucide="user" class="w-4 h-4"></i>
+            <span class="hidden sm:inline">Profile</span>
+          </button>
+
+          <!-- Admin Tab (If Admin) -->
+          ${AppState.user && AppState.user.role === 'admin' ? `
+            <button onclick="navigateTab('admin')" class="twilight-dock-tab flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-medium transition-all ${AppState.currentTab === 'admin' ? 'twilight-tab-active' : 'twilight-tab-inactive'}" title="Admin Panel">
+              <i data-lucide="shield" class="w-4 h-4"></i>
+              <span class="hidden sm:inline">Admin</span>
+            </button>
+          ` : ''}
+
+          <!-- Separator -->
+          <div class="h-4 w-px bg-slate-200 dark:bg-white/10 mx-1"></div>
+
+          <!-- Quick Search Button -->
+          <button onclick="openTwilightCommandPalette()" class="twilight-dock-tab p-2 rounded-full text-xs text-slate-500 hover:text-black dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 transition-all" title="Search (⌘K)">
+            <i data-lucide="search" class="w-4 h-4"></i>
+          </button>
+
+          <!-- Quick + Create Button -->
+          <button onclick="openCreateNewFileModal()" class="twilight-dock-tab p-2 rounded-full text-xs font-semibold zencloud-btn-primary shadow-sm transition-all" title="Create New File">
+            <i data-lucide="plus" class="w-4 h-4"></i>
+          </button>
+        </nav>
+      </div>
+
     </div>
   `;
 
@@ -938,6 +1441,172 @@ function renderDashboardLayout(container) {
   renderEmailVerificationBanner();
   renderTabContent();
 }
+
+function toggleTwilightCreateMenu(event) {
+  event.stopPropagation();
+  const cMenu = document.getElementById('twilight-create-menu');
+  const uMenu = document.getElementById('twilight-user-menu');
+  if (uMenu) uMenu.classList.add('hidden');
+  if (cMenu) {
+    cMenu.classList.toggle('hidden');
+    if (!cMenu.classList.contains('hidden') && window.lucide) {
+      lucide.createIcons();
+    }
+  }
+}
+
+function toggleTwilightUserMenu(event) {
+  event.stopPropagation();
+  const cMenu = document.getElementById('twilight-create-menu');
+  const uMenu = document.getElementById('twilight-user-menu');
+  if (cMenu) cMenu.classList.add('hidden');
+  if (uMenu) {
+    uMenu.classList.toggle('hidden');
+    if (!uMenu.classList.contains('hidden') && window.lucide) {
+      lucide.createIcons();
+    }
+  }
+}
+
+function closeTwilightMenus() {
+  const cMenu = document.getElementById('twilight-create-menu');
+  const uMenu = document.getElementById('twilight-user-menu');
+  if (cMenu) cMenu.classList.add('hidden');
+  if (uMenu) uMenu.classList.add('hidden');
+}
+
+function triggerNavbarFileUpload() {
+  if (AppState.currentTab !== 'files') {
+    AppState.currentTab = 'files';
+    renderApp();
+  }
+  setTimeout(() => {
+    const input = document.getElementById('file-upload-input');
+    if (input) input.click();
+  }, 100);
+}
+
+function openTwilightCommandPalette() {
+  const existing = document.getElementById('twilight-command-palette');
+  if (existing) {
+    existing.classList.remove('hidden');
+    const input = document.getElementById('twilight-cmd-input');
+    if (input) { input.value = ''; input.focus(); filterTwilightCommands(''); }
+    return;
+  }
+
+  const modal = document.createElement('div');
+  modal.id = 'twilight-command-palette';
+  modal.className = 'fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex items-start justify-center pt-20 p-4 modal-backdrop-enter';
+  modal.onclick = (e) => {
+    if (e.target === modal) closeTwilightCommandPalette();
+  };
+
+  modal.innerHTML = `
+    <div class="glass-card w-full max-w-xl rounded-2xl border border-white/20 shadow-2xl bg-[#080808] text-slate-100 overflow-hidden modal-box-enter" onclick="event.stopPropagation()">
+      <div class="flex items-center gap-3 px-4 py-3.5 border-b border-white/10 bg-[#000000]">
+        <i data-lucide="search" class="w-5 h-5 text-white/80 shrink-0"></i>
+        <input id="twilight-cmd-input" type="text" placeholder="Type a command, file type, or tab..." class="w-full bg-transparent text-sm text-white placeholder-slate-400 focus:outline-none" oninput="filterTwilightCommands(this.value)">
+        <kbd class="px-2 py-0.5 text-[11px] font-mono bg-[#141414] border border-white/20 rounded text-white">ESC</kbd>
+      </div>
+      <div id="twilight-cmd-list" class="max-h-80 overflow-y-auto p-2 space-y-1 custom-scrollbar">
+        <!-- Rendered items -->
+      </div>
+      <div class="px-4 py-2 border-t border-white/10 bg-[#000000] text-[11px] text-slate-400 flex items-center justify-between">
+        <span>Press <kbd class="px-1 py-0.2 bg-[#141414] border border-white/20 rounded font-mono text-[10px]">Enter</kbd> to execute</span>
+        <span class="text-white font-semibold">ZenCloud Twilight Bar</span>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  if (window.lucide) lucide.createIcons();
+
+  const input = document.getElementById('twilight-cmd-input');
+  if (input) input.focus();
+  filterTwilightCommands('');
+}
+
+function closeTwilightCommandPalette() {
+  const modal = document.getElementById('twilight-command-palette');
+  if (modal) modal.remove();
+}
+
+function filterTwilightCommands(query) {
+  const list = document.getElementById('twilight-cmd-list');
+  if (!list) return;
+
+  const q = (query || '').toLowerCase().trim();
+  const commands = [
+    { title: 'Files & Inbuilt Studio', desc: 'Browse, edit code and manage project files', icon: 'folder-code', color: 'text-white', action: () => { navigateTab('files'); closeTwilightCommandPalette(); } },
+    { title: 'Create HTML File (.html)', desc: 'Start a new HTML5 document in built-in editor', icon: 'code', color: 'text-white', action: () => { closeTwilightCommandPalette(); selectNewFilePreset('html'); } },
+    { title: 'Create Text File (.txt)', desc: 'Plain text note or documentation file', icon: 'file-text', color: 'text-emerald-400', action: () => { closeTwilightCommandPalette(); selectNewFilePreset('text'); } },
+    { title: 'Create JavaScript File (.js)', desc: 'JavaScript code file with syntax highlighter', icon: 'file-code', color: 'text-amber-400', action: () => { closeTwilightCommandPalette(); selectNewFilePreset('javascript'); } },
+    { title: 'Create JSON File (.json)', desc: 'Structured JSON data file with formatter', icon: 'braces', color: 'text-white', action: () => { closeTwilightCommandPalette(); selectNewFilePreset('json'); } },
+    { title: 'Create Markdown Document (.md)', desc: 'Markdown file with live rendered preview', icon: 'book-open', color: 'text-white', action: () => { closeTwilightCommandPalette(); selectNewFilePreset('markdown'); } },
+    { title: 'Create New Folder', desc: 'Create a new directory in current location', icon: 'folder-plus', color: 'text-emerald-400', action: () => { closeTwilightCommandPalette(); openCreateFolderModal(); } },
+    { title: 'Upload Files', desc: 'Upload files via browser or SFTP', icon: 'upload-cloud', color: 'text-white', action: () => { closeTwilightCommandPalette(); triggerNavbarFileUpload(); } },
+    { title: 'Dashboard & Metrics', desc: 'VPS resource status, memory, storage graph', icon: 'layout-dashboard', color: 'text-white', action: () => { navigateTab('dashboard'); closeTwilightCommandPalette(); } },
+    { title: 'S3 & Vercel Blob Compatible API', desc: 'Manage access keys, buckets, endpoints', icon: 'database', color: 'text-amber-400', action: () => { navigateTab('s3cluster'); closeTwilightCommandPalette(); } },
+    { title: 'Public File Shares', desc: 'Active shared links, expiration dates', icon: 'share-2', color: 'text-white', action: () => { navigateTab('shares'); closeTwilightCommandPalette(); } },
+    { title: 'Profile & Security', desc: 'Change password, 2FA, email settings', icon: 'user', color: 'text-slate-300', action: () => { navigateTab('profile'); closeTwilightCommandPalette(); } },
+    { title: 'Toggle Dark / Light Theme', desc: 'Switch visual appearance', icon: 'sun', color: 'text-amber-300', action: () => { toggleDarkMode(); closeTwilightCommandPalette(); } },
+  ];
+
+  if (AppState.user && AppState.user.role === 'admin') {
+    commands.push({ title: 'Admin Control Center', desc: 'Manage all VPS users, storage quotas & terminal', icon: 'shield-alert', color: 'text-amber-400', action: () => { navigateTab('admin'); closeTwilightCommandPalette(); } });
+  }
+
+  const filtered = commands.filter(c => c.title.toLowerCase().includes(q) || c.desc.toLowerCase().includes(q));
+
+  if (filtered.length === 0) {
+    list.innerHTML = `<div class="p-6 text-center text-slate-500 text-xs">No matching commands or files found for "${escapeHtml(q)}"</div>`;
+    return;
+  }
+
+  list.innerHTML = filtered.map((c, idx) => `
+    <button onclick="(${c.action.toString()})()" class="w-full flex items-center justify-between p-2.5 rounded-xl hover:bg-white/10 text-left transition-all group">
+      <div class="flex items-center gap-3">
+        <div class="p-2 rounded-lg bg-[#141414] ${c.color} border border-white/15 group-hover:border-white/40">
+          <i data-lucide="${c.icon}" class="w-4 h-4"></i>
+        </div>
+        <div>
+          <div class="text-xs font-semibold text-slate-100 group-hover:text-white">${escapeHtml(c.title)}</div>
+          <div class="text-[11px] text-slate-400">${escapeHtml(c.desc)}</div>
+        </div>
+      </div>
+      <i data-lucide="chevron-right" class="w-4 h-4 text-slate-500 group-hover:text-white opacity-0 group-hover:opacity-100 transition-all"></i>
+    </button>
+  `).join('');
+
+  if (window.lucide) lucide.createIcons();
+}
+
+// Global click outside listener for twilight menus
+window.addEventListener('click', (e) => {
+  const cMenu = document.getElementById('twilight-create-menu');
+  const cBtn = document.getElementById('twilight-create-btn');
+  const uMenu = document.getElementById('twilight-user-menu');
+  const uBtn = document.getElementById('twilight-user-btn');
+
+  if (cMenu && !cMenu.contains(e.target) && !cBtn?.contains(e.target)) {
+    cMenu.classList.add('hidden');
+  }
+  if (uMenu && !uMenu.contains(e.target) && !uBtn?.contains(e.target)) {
+    uMenu.classList.add('hidden');
+  }
+});
+
+// Global keyboard shortcuts for Twilight Nav Bar
+window.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+    e.preventDefault();
+    openTwilightCommandPalette();
+  }
+  if (e.key === 'Escape') {
+    closeTwilightCommandPalette();
+    closeTwilightMenus();
+  }
+});
 
 function navigateTab(tabName) {
   AppState.currentTab = tabName;
@@ -1073,7 +1742,7 @@ async function renderFileManagerTab(container) {
         <!-- Admin User Directory Scope Selector -->
         <div class="w-full max-w-full min-w-0 p-3.5 sm:p-4 rounded-2xl border ${isInspecting ? 'bg-amber-500/10 border-amber-500/30' : 'glass-card border-slate-200 dark:border-slate-800'} space-y-3 overflow-hidden box-border">
           <div class="flex items-start gap-2.5 sm:gap-3 min-w-0 w-full">
-            <div class="w-9 h-9 rounded-xl ${isInspecting ? 'bg-amber-500/20 text-amber-500 dark:text-amber-400' : 'bg-sky-500/20 text-sky-500 dark:text-sky-400'} flex items-center justify-center font-bold text-xs shrink-0 mt-0.5 sm:mt-0">
+            <div class="w-9 h-9 rounded-xl ${isInspecting ? 'bg-amber-500/20 text-amber-500 dark:text-amber-400' : 'bg-slate-200 text-slate-800 dark:bg-white/15 dark:text-white'} flex items-center justify-center font-bold text-xs shrink-0 mt-0.5 sm:mt-0">
               <i data-lucide="${isInspecting ? 'user-check' : 'shield'}" class="w-4 h-4"></i>
             </div>
             <div class="min-w-0 flex-1">
@@ -1081,7 +1750,7 @@ async function renderFileManagerTab(container) {
                 <span class="text-xs font-bold text-slate-900 dark:text-white shrink-0">Admin Directory Scope:</span>
                 ${isInspecting 
                   ? `<span class="inline-flex items-center px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-600 dark:text-amber-300 font-mono text-[11px] font-bold truncate max-w-full" title="Inspecting User #${AppState.targetUserId}: ${escapeHtml(targetLabel)}">Inspecting User #${AppState.targetUserId}: ${escapeHtml(targetLabel)}</span>` 
-                  : `<span class="inline-flex items-center px-2 py-0.5 rounded-md bg-sky-500/20 text-sky-600 dark:text-sky-300 font-mono text-[11px] font-bold truncate max-w-full">My Personal Storage (Self)</span>`}
+                  : `<span class="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-200 text-slate-800 dark:bg-white/15 dark:text-white font-mono text-[11px] font-bold truncate max-w-full">My Personal Storage (Self)</span>`}
               </div>
               <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1 break-words leading-relaxed">
                 ${isInspecting 
@@ -1112,14 +1781,19 @@ async function renderFileManagerTab(container) {
       <div class="flex flex-wrap items-center justify-between gap-3 glass-card p-3 sm:p-4 rounded-2xl border border-slate-200 dark:border-slate-800 w-full max-w-full min-w-0 overflow-hidden">
         <div class="flex flex-wrap items-center gap-2 min-w-0">
           <!-- Upload Button -->
-          <label class="bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl cursor-pointer flex items-center gap-2 shadow-lg shadow-sky-600/20 transition-all shrink-0">
-            <i data-lucide="upload-cloud" class="w-4 h-4"></i> Upload Files
+          <label class="zencloud-btn-primary bg-white hover:bg-neutral-200 text-black text-xs font-bold px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl cursor-pointer flex items-center gap-2 shadow-lg shadow-white/20 transition-all shrink-0">
+            <i data-lucide="upload-cloud" class="w-4 h-4 text-black"></i> Upload Files
             <input type="file" id="file-upload-input" multiple onchange="handleFileUpload(event)" class="hidden">
           </label>
 
+          <!-- New File Button -->
+          <button onclick="openCreateNewFileModal()" class="bg-white/10 hover:bg-white/20 text-white text-xs font-semibold px-3 sm:px-3.5 py-2 sm:py-2.5 rounded-xl flex items-center gap-2 transition-all border border-white/20 shrink-0 shadow-sm" title="Create New File (.html, .txt, .js, .json, etc.)">
+            <i data-lucide="file-plus" class="w-4 h-4 text-white"></i> New File
+          </button>
+
           <!-- Create Folder -->
           <button onclick="openCreateFolderModal()" class="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold px-3 sm:px-3.5 py-2 sm:py-2.5 rounded-xl flex items-center gap-2 transition-all border border-slate-200 dark:border-slate-700 shrink-0">
-            <i data-lucide="folder-plus" class="w-4 h-4"></i> New Folder
+            <i data-lucide="folder-plus" class="w-4 h-4 text-amber-400"></i> New Folder
           </button>
 
           <!-- Refresh -->
@@ -1133,10 +1807,10 @@ async function renderFileManagerTab(container) {
           <button onclick="handleBulkDelete()" class="bg-red-600/20 hover:bg-red-600 text-red-600 dark:text-red-400 hover:text-white text-xs font-semibold px-3 py-2 rounded-xl flex items-center gap-1.5 transition-all">
             <i data-lucide="trash-2" class="w-4 h-4"></i> Delete Selected (<span id="selected-count">0</span>)
           </button>
-          <button onclick="openCompressModal()" class="bg-purple-600/20 hover:bg-purple-600 text-purple-600 dark:text-purple-400 hover:text-white text-xs font-semibold px-3 py-2 rounded-xl flex items-center gap-1.5 transition-all">
+          <button onclick="openCompressModal()" class="bg-white/10 hover:bg-white text-slate-300 hover:text-black text-xs font-semibold px-3 py-2 rounded-xl flex items-center gap-1.5 transition-all border border-white/20">
             <i data-lucide="archive" class="w-4 h-4"></i> Compress
           </button>
-          <button onclick="openMoveSelectedPrompt()" class="bg-cyan-600/20 hover:bg-cyan-600 text-cyan-600 dark:text-cyan-400 hover:text-white text-xs font-semibold px-3 py-2 rounded-xl flex items-center gap-1.5 transition-all">
+          <button onclick="openMoveSelectedPrompt()" class="bg-white/10 hover:bg-white text-slate-300 hover:text-black text-xs font-semibold px-3 py-2 rounded-xl flex items-center gap-1.5 transition-all border border-white/20">
             <i data-lucide="folder-input" class="w-4 h-4"></i> Move
           </button>
         </div>
@@ -1145,14 +1819,14 @@ async function renderFileManagerTab(container) {
         <div class="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end min-w-0">
           <div class="relative flex-1 sm:flex-initial min-w-0">
             <i data-lucide="search" class="w-4 h-4 absolute left-3 top-2.5 text-slate-400"></i>
-            <input type="text" id="file-search-input" oninput="handleFileSearch(event)" placeholder="Search files..." class="w-full sm:w-48 pitch-input rounded-xl pl-9 pr-4 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-sky-500">
+            <input type="text" id="file-search-input" oninput="handleFileSearch(event)" placeholder="Search files..." class="w-full sm:w-48 pitch-input rounded-xl pl-9 pr-4 py-2 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-white">
           </div>
 
           <div class="flex bg-slate-100 dark:bg-slate-900 p-1 rounded-xl border border-slate-200 dark:border-slate-800 shrink-0" id="file-view-toggle-group">
-            <button id="view-mode-grid-btn" onclick="setFileViewMode('grid')" class="p-1.5 rounded-lg transition-all ${AppState.viewMode === 'grid' ? 'bg-sky-600 text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}" title="Grid View">
+            <button id="view-mode-grid-btn" onclick="setFileViewMode('grid')" class="p-1.5 rounded-lg transition-all ${AppState.viewMode === 'grid' ? 'bg-slate-900 text-white dark:bg-white dark:text-black font-bold shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}" title="Grid View">
               <i data-lucide="grid" class="w-4 h-4"></i>
             </button>
-            <button id="view-mode-list-btn" onclick="setFileViewMode('list')" class="p-1.5 rounded-lg transition-all ${AppState.viewMode === 'list' ? 'bg-sky-600 text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}" title="List View">
+            <button id="view-mode-list-btn" onclick="setFileViewMode('list')" class="p-1.5 rounded-lg transition-all ${AppState.viewMode === 'list' ? 'bg-slate-900 text-white dark:bg-white dark:text-black font-bold shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}" title="List View">
               <i data-lucide="list" class="w-4 h-4"></i>
             </button>
           </div>
@@ -1162,27 +1836,27 @@ async function renderFileManagerTab(container) {
       <!-- Download from URL -->
       <div class="glass-card p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
         <div class="flex items-start gap-3 mb-4">
-          <div class="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-600 dark:text-cyan-400 shrink-0">
+          <div class="w-9 h-9 rounded-xl bg-slate-100 dark:bg-white/10 border border-slate-200 dark:border-white/20 flex items-center justify-center text-slate-800 dark:text-white shrink-0">
             <i data-lucide="cloud-download" class="w-4 h-4"></i>
           </div>
           <div>
             <h3 class="text-sm font-bold text-slate-900 dark:text-white">Download from URL</h3>
-            <p class="text-xs text-slate-600 dark:text-slate-400 mt-1">Paste a direct HTTP/HTTPS file link. The server will run <span class="font-mono text-cyan-600 dark:text-cyan-300 font-semibold">wget</span> in the background and save the finished file in this directory.</p>
+            <p class="text-xs text-slate-600 dark:text-slate-400 mt-1">Paste a direct HTTP/HTTPS file link. The server will run <span class="font-mono text-slate-900 dark:text-white font-semibold">wget</span> in the background and save the finished file in this directory.</p>
           </div>
         </div>
 
         <form onsubmit="startUrlDownload(event)" class="grid grid-cols-1 lg:grid-cols-[1fr_240px_auto] gap-2">
-          <input id="url-download-link" type="url" required placeholder="https://example.com/file.zip" class="w-full pitch-input rounded-xl px-3 py-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-cyan-500">
-          <input id="url-download-filename" type="text" placeholder="File name (optional)" maxlength="240" class="w-full pitch-input rounded-xl px-3 py-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-cyan-500">
-          <button type="submit" class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold px-4 py-2.5 rounded-xl flex items-center justify-center gap-2">
-            <i data-lucide="download" class="w-4 h-4"></i> Start Download
+          <input id="url-download-link" type="url" required placeholder="https://example.com/file.zip" class="w-full pitch-input rounded-xl px-3 py-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-white">
+          <input id="url-download-filename" type="text" placeholder="File name (optional)" maxlength="240" class="w-full pitch-input rounded-xl px-3 py-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-white">
+          <button type="submit" class="zencloud-btn-primary bg-white hover:bg-neutral-200 text-black font-bold text-xs px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 shadow-md">
+            <i data-lucide="download" class="w-4 h-4 text-black"></i> Start Download
           </button>
         </form>
 
         <div class="mt-3 rounded-xl bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 p-3">
           <p class="text-[11px] leading-5 text-slate-600 dark:text-slate-400">
             <span class="font-bold text-slate-800 dark:text-slate-200">How it works:</span>
-            1) Your link is checked, 2) <span class="font-mono text-cyan-600 dark:text-cyan-300">wget</span> downloads it on the VPS in the background,
+            1) Your link is checked, 2) <span class="font-mono text-slate-900 dark:text-white">wget</span> downloads it on the VPS in the background,
             3) the completed file is moved into your current folder, and 4) your file list and storage usage are refreshed.
             If the URL does not provide a useful filename, enter one in the File name box. Existing names are automatically made unique.
           </p>
@@ -1196,13 +1870,13 @@ async function renderFileManagerTab(container) {
       </div>
 
       <!-- Upload Progress Container -->
-      <div id="upload-progress-container" class="hidden glass-card p-4 rounded-xl border border-sky-500/30">
-        <div class="flex justify-between text-xs font-semibold text-sky-400 mb-1">
+      <div id="upload-progress-container" class="hidden glass-card p-4 rounded-xl border border-white/20">
+        <div class="flex justify-between text-xs font-semibold text-slate-900 dark:text-white mb-1">
           <span id="upload-status-text">Uploading files...</span>
           <span id="upload-percentage">0%</span>
         </div>
         <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-          <div id="upload-progress-bar" class="bg-sky-500 h-full transition-all" style="width: 0%"></div>
+          <div id="upload-progress-bar" class="bg-white h-full transition-all" style="width: 0%"></div>
         </div>
       </div>
 
@@ -1317,13 +1991,13 @@ function renderBreadcrumbs(currentPath) {
   if (!container) return;
 
   const parts = currentPath.split('/').filter(Boolean);
-  let html = `<button onclick="navigateToPath('/')" class="hover:text-sky-400 font-semibold flex items-center gap-1"><i data-lucide="home" class="w-3.5 h-3.5"></i> Root</button>`;
+  let html = `<button onclick="navigateToPath('/')" class="hover:text-black dark:hover:text-white font-semibold flex items-center gap-1"><i data-lucide="home" class="w-3.5 h-3.5"></i> Root</button>`;
 
   let accumPath = '';
   parts.forEach((p, idx) => {
     accumPath += '/' + p;
     const target = accumPath;
-    html += ` <span class="text-slate-600">/</span> <button onclick="navigateToPath('${target}')" class="hover:text-sky-400 font-semibold">${escapeHtml(p)}</button>`;
+    html += ` <span class="text-slate-400 dark:text-slate-600">/</span> <button onclick="navigateToPath('${target}')" class="hover:text-black dark:hover:text-white font-semibold">${escapeHtml(p)}</button>`;
   });
 
   container.innerHTML = html;
@@ -1359,13 +2033,13 @@ function renderFileItems() {
     container.innerHTML = filtered.map(file => {
       const isSelected = AppState.selectedPaths.includes(file.path);
       const icon = file.isDirectory ? 'folder' : getFileIcon(file.name);
-      const iconColor = file.isDirectory ? 'text-amber-500 dark:text-amber-400' : 'text-sky-600 dark:text-sky-400';
+      const iconColor = file.isDirectory ? 'text-amber-500 dark:text-amber-400' : 'text-slate-800 dark:text-white';
 
       return `
-        <div class="file-grid-card p-4 rounded-xl relative group cursor-pointer ${isSelected ? 'ring-2 ring-sky-500 bg-sky-500/15' : ''}" onclick="toggleSelectFile('${file.path}', event)">
+        <div class="file-grid-card p-4 rounded-xl relative group cursor-pointer ${isSelected ? 'ring-2 ring-black/40 dark:ring-white/60 bg-black/5 dark:bg-white/10' : ''}" onclick="toggleSelectFile('${file.path}', event)">
           
           <div class="flex items-center justify-between mb-3">
-            <input type="checkbox" ${isSelected ? 'checked' : ''} onclick="event.stopPropagation(); toggleSelectFile('${file.path}')" class="w-4 h-4 rounded border-slate-300 dark:border-slate-700 text-sky-600 accent-sky-500">
+            <input type="checkbox" ${isSelected ? 'checked' : ''} onclick="event.stopPropagation(); toggleSelectFile('${file.path}')" class="w-4 h-4 rounded border-slate-300 dark:border-slate-700 accent-black dark:accent-white">
             
             <!-- Context Menu Button -->
             <button onclick="event.stopPropagation(); openFileContextMenu('${file.path}', ${file.isDirectory}, event)" class="opacity-0 group-hover:opacity-100 p-1 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 transition-opacity">
@@ -1373,7 +2047,7 @@ function renderFileItems() {
             </button>
           </div>
 
-          <div class="flex flex-col items-center text-center" onclick="event.stopPropagation(); ${file.isDirectory ? `navigateToPath('${file.path}')` : `openFilePreview('${file.path}')`}">
+          <div class="flex flex-col items-center text-center" onclick="event.stopPropagation(); ${file.isDirectory ? `navigateToPath('${file.path}')` : `handleFileClick('${file.path}')`}">
             <i data-lucide="${icon}" class="w-10 h-10 ${iconColor} mb-2 drop-shadow-sm"></i>
             <div class="text-xs font-bold text-slate-900 dark:text-white truncate w-full" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</div>
             <div class="text-[11px] font-medium text-slate-600 dark:text-slate-400 mt-1">${file.isDirectory ? 'Folder' : formatBytes(file.size)}</div>
@@ -1395,15 +2069,15 @@ function renderFileItems() {
       ${filtered.map(file => {
         const isSelected = AppState.selectedPaths.includes(file.path);
         const icon = file.isDirectory ? 'folder' : getFileIcon(file.name);
-        const iconColor = file.isDirectory ? 'text-amber-500 dark:text-amber-400' : 'text-sky-600 dark:text-sky-400';
+        const iconColor = file.isDirectory ? 'text-amber-500 dark:text-amber-400' : 'text-slate-800 dark:text-white';
 
         return `
-          <div class="file-list-row px-4 py-3 flex items-center text-xs cursor-pointer ${isSelected ? 'bg-sky-500/15' : ''}">
-            <input type="checkbox" ${isSelected ? 'checked' : ''} onclick="event.stopPropagation(); toggleSelectFile('${file.path}')" class="w-4 h-4 rounded border-slate-300 dark:border-slate-700 text-sky-600 accent-sky-500 mr-3">
+          <div class="file-list-row px-4 py-3 flex items-center text-xs cursor-pointer ${isSelected ? 'bg-black/5 dark:bg-white/10' : ''}">
+            <input type="checkbox" ${isSelected ? 'checked' : ''} onclick="event.stopPropagation(); toggleSelectFile('${file.path}')" class="w-4 h-4 rounded border-slate-300 dark:border-slate-700 accent-black dark:accent-white mr-3">
             
-            <div class="flex-1 flex items-center gap-3 min-w-0" onclick="${file.isDirectory ? `navigateToPath('${file.path}')` : `openFilePreview('${file.path}')`}">
+            <div class="flex-1 flex items-center gap-3 min-w-0" onclick="${file.isDirectory ? `navigateToPath('${file.path}')` : `handleFileClick('${file.path}')`}">
               <i data-lucide="${icon}" class="w-5 h-5 ${iconColor} shrink-0"></i>
-              <span class="font-semibold text-slate-900 dark:text-white hover:text-sky-600 dark:hover:text-sky-400 truncate">${escapeHtml(file.name)}</span>
+              <span class="font-semibold text-slate-900 dark:text-white hover:underline truncate">${escapeHtml(file.name)}</span>
             </div>
 
             <span class="w-32 font-medium text-slate-600 dark:text-slate-400">${file.isDirectory ? '--' : formatBytes(file.size)}</span>
@@ -1466,10 +2140,10 @@ function setFileViewMode(mode) {
   const listBtn = document.getElementById('view-mode-list-btn');
   if (gridBtn && listBtn) {
     if (mode === 'grid') {
-      gridBtn.className = 'p-1.5 rounded-lg transition-all bg-sky-600 text-white shadow-sm';
+      gridBtn.className = 'p-1.5 rounded-lg transition-all bg-slate-900 text-white dark:bg-white dark:text-black font-bold shadow-sm';
       listBtn.className = 'p-1.5 rounded-lg transition-all text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white';
     } else {
-      listBtn.className = 'p-1.5 rounded-lg transition-all bg-sky-600 text-white shadow-sm';
+      listBtn.className = 'p-1.5 rounded-lg transition-all bg-slate-900 text-white dark:bg-white dark:text-black font-bold shadow-sm';
       gridBtn.className = 'p-1.5 rounded-lg transition-all text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white';
     }
   }
@@ -1552,40 +2226,948 @@ function openCreateFolderModal() {
   .catch(err => showToast(err.message, 'error'));
 }
 
+// ==========================================
+// 4b. INBUILT MULTI-FILE CODE & TEXT EDITOR
+// Supports .html, .txt, .js, .css, .json, .md, .sh, .py, .sql, .yaml, etc.
+// With Live HTML & Markdown Preview, Code Formatting, Syntax Modes
+// ==========================================
+
+const EDITABLE_EXTENSIONS = [
+  'html', 'htm', 'txt', 'text', 'log', 'env', 'ini', 'conf', 'cfg',
+  'js', 'mjs', 'cjs', 'ts', 'jsx', 'tsx',
+  'css', 'scss', 'less',
+  'json', 'json5',
+  'md', 'markdown',
+  'xml', 'svg',
+  'sh', 'bash', 'zsh',
+  'sql',
+  'py', 'php', 'rb',
+  'yaml', 'yml',
+  'dockerfile', 'dockerignore', 'gitignore'
+];
+
+function isEditableFile(filePath) {
+  if (!filePath || typeof filePath !== 'string') return false;
+  const fileName = filePath.split('/').pop().toLowerCase();
+  if (fileName === 'dockerfile' || fileName.startsWith('.env') || fileName.startsWith('.git') || fileName.endsWith('rc')) return true;
+  const ext = fileName.includes('.') ? fileName.split('.').pop() : '';
+  return EDITABLE_EXTENSIONS.includes(ext);
+}
+
+function getFileExtension(filePath) {
+  if (!filePath) return '';
+  const fileName = filePath.split('/').pop().toLowerCase();
+  return fileName.includes('.') ? fileName.split('.').pop() : '';
+}
+
+function detectAceMode(filePath) {
+  const ext = getFileExtension(filePath);
+  const name = (filePath.split('/').pop() || '').toLowerCase();
+  if (ext === 'html' || ext === 'htm') return 'html';
+  if (['js', 'mjs', 'cjs', 'ts', 'jsx', 'tsx'].includes(ext)) return 'javascript';
+  if (['css', 'scss', 'less'].includes(ext)) return 'css';
+  if (['json', 'json5'].includes(ext)) return 'json';
+  if (['md', 'markdown'].includes(ext)) return 'markdown';
+  if (['xml', 'svg'].includes(ext)) return 'xml';
+  if (['sh', 'bash', 'zsh'].includes(ext) || name === 'dockerfile') return 'sh';
+  if (ext === 'sql') return 'sql';
+  if (ext === 'py') return 'python';
+  if (['yaml', 'yml'].includes(ext)) return 'yaml';
+  return 'text';
+}
+
+function getFriendlyFileTypeName(filePath) {
+  const mode = detectAceMode(filePath);
+  const map = {
+    html: 'HTML5 Web Page',
+    javascript: 'JavaScript / TypeScript',
+    css: 'CSS Stylesheet',
+    json: 'JSON Data',
+    markdown: 'Markdown Document',
+    xml: 'XML / SVG Vector',
+    sh: 'Shell Script',
+    sql: 'SQL Database Script',
+    python: 'Python Script',
+    yaml: 'YAML Configuration',
+    text: 'Plain Text File'
+  };
+  return map[mode] || 'Text Document';
+}
+
+function handleFileClick(filePath) {
+  if (isEditableFile(filePath)) {
+    openFileEditor(filePath);
+  } else {
+    openFilePreview(filePath);
+  }
+}
+
+let activeAceInstance = null;
+let livePreviewDebounceTimer = null;
+let activeEditorPath = '';
+let activeEditorOriginalContent = '';
+let activeEditorIsDirty = false;
+let activeEditorViewMode = 'code'; // 'code', 'split', 'preview'
+let activeEditorMode = 'text';
+let activeEditorFontSize = 14;
+let activeEditorWrap = true;
+
+const FILE_STARTER_PRESETS = {
+  html: {
+    name: 'index.html',
+    desc: 'HTML5 Web Document with modern starter boilerplate',
+    content: `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ZenCloud Webpage</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      margin: 0;
+      padding: 2.5rem 1.5rem;
+      background: #000000;
+      color: #ffffff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 80vh;
+      text-align: center;
+    }
+    .hero-card {
+      background: #080808;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 1.25rem;
+      padding: 2.5rem 3rem;
+      box-shadow: 0 12px 36px -8px rgba(0, 0, 0, 0.9);
+      max-width: 540px;
+    }
+    h1 {
+      color: #ffffff;
+      margin-top: 0;
+      font-size: 2rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+    p { color: #a3a3a3; line-height: 1.6; }
+    .badge {
+      display: inline-block;
+      background: rgba(255, 255, 255, 0.1);
+      color: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      padding: 0.35rem 0.85rem;
+      border-radius: 9999px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+    }
+    .action-btn {
+      background: #ffffff;
+      color: #000000;
+      border: 0;
+      padding: 0.75rem 1.75rem;
+      border-radius: 0.75rem;
+      font-weight: 700;
+      font-size: 0.95rem;
+      cursor: pointer;
+      box-shadow: 0 4px 18px rgba(255, 255, 255, 0.3);
+      transition: all 0.2s;
+    }
+    .action-btn:hover {
+      background: #e5e5e5;
+      transform: translateY(-1px);
+    }
+  </style>
+</head>
+<body>
+  <div class="hero-card">
+    <div class="badge">🚀 Built with ZenCloud Editor</div>
+    <h1>Hello World!</h1>
+    <p>This page is hosted on ZenCloud VPS Cloud and edited with the inbuilt live editor.</p>
+    <button class="action-btn" onclick="alert('Hello from ZenCloud!')">Click Me</button>
+  </div>
+</body>
+</html>`
+  },
+  text: {
+    name: 'notes.txt',
+    desc: 'Plain text file for quick notes, logs, or keys',
+    content: `ZenCloud Storage - Project Notes\nCreated: ${new Date().toLocaleString()}\n\n- File created with the ZenCloud Inbuilt Editor\n- Add your notes, documentation, or lists here.\n`
+  },
+  javascript: {
+    name: 'app.js',
+    desc: 'Modern JavaScript application module',
+    content: `// ZenCloud Application Script\nconsole.log('ZenCloud app module initialized at:', new Date().toISOString());\n\nfunction main() {\n  console.log('Running main process...');\n}\n\nmain();\n`
+  },
+  css: {
+    name: 'style.css',
+    desc: 'CSS Stylesheet with modern design tokens',
+    content: `/* ZenCloud Stylesheet */\n:root {\n  --primary: #ffffff;\n  --bg-dark: #000000;\n  --card-bg: #080808;\n  --text-main: #ffffff;\n}\n\nbody {\n  background: var(--bg-dark);\n  color: var(--text-main);\n  font-family: system-ui, -apple-system, sans-serif;\n  margin: 0;\n  padding: 1.5rem;\n}\n`
+  },
+  json: {
+    name: 'config.json',
+    desc: 'JSON Configuration document with formatted object',
+    content: `{\n  "serviceName": "zencloud-storage-instance",\n  "version": "1.0.0",\n  "environment": "production",\n  "storage": {\n    "enabled": true,\n    "protocol": "sftp",\n    "features": [\n      "inbuilt-editor",\n      "live-preview",\n      "s3-cluster"\n    ]\n  }\n}\n`
+  },
+  markdown: {
+    name: 'README.md',
+    desc: 'Markdown Documentation with formatted headings and lists',
+    content: `# Project Documentation\n\nWelcome to your project hosted on **ZenCloud**.\n\n## 🌟 Features\n- **Inbuilt Code & Text Editor** with syntax highlighting for HTML, JS, CSS, JSON, Markdown, and more.\n- **Real-Time Live HTML & Markdown Preview** split screen.\n- **Secure SFTP Storage** with granular quota management.\n- **AWS S3 & Vercel Blob API Cluster** compatibility.\n\n## 🛠 Quick Start\n1. Edit this file or create your own \`.html\` and \`.txt\` files.\n2. Preview changes live side-by-side.\n3. Save with \`Ctrl + S\`.\n`
+  },
+  sh: {
+    name: 'deploy.sh',
+    desc: 'Bash Shell script with execution safeguards',
+    content: `#!/usr/bin/env bash\nset -euo pipefail\n\necho "=== ZenCloud Deployment Script ==="\necho "Timestamp: $(date)"\necho "Deployment completed successfully!"\n`
+  }
+};
+
+function openCreateNewFileModal() {
+  const existing = document.getElementById('zencloud-new-file-modal') || document.getElementById('zenova-new-file-modal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'zencloud-new-file-modal';
+  modal.className = 'fixed inset-0 bg-black/85 backdrop-blur-md z-[90] flex items-center justify-center p-4 modal-backdrop-enter';
+  modal.innerHTML = `
+    <div class="glass-card w-full max-w-xl rounded-2xl p-6 border border-white/20 shadow-2xl modal-box-enter bg-[#080808] text-slate-100">
+      <div class="flex items-center justify-between mb-5 pb-4 border-b border-white/10">
+        <div class="flex items-center gap-3">
+          <div class="p-2.5 rounded-xl bg-white/10 text-white border border-white/20 shadow-md">
+            <i data-lucide="file-plus" class="w-6 h-6"></i>
+          </div>
+          <div>
+            <h3 class="font-extrabold text-base text-white">Create New File</h3>
+            <p class="text-xs text-slate-400">Choose a file type starter or enter a custom file name</p>
+          </div>
+        </div>
+        <button onclick="closeNewFileModal()" class="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-neutral-800 transition-all">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Presets Grid -->
+      <div class="mb-5">
+        <label class="block text-xs font-bold uppercase tracking-wider text-white mb-2.5">File Type Presets</label>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+          <button type="button" onclick="selectNewFilePreset('html')" class="preset-card p-3 rounded-xl border border-white/15 bg-[#040404] hover:border-white hover:bg-white/10 text-left transition-all group">
+            <div class="text-xs font-bold text-white flex items-center gap-1.5 group-hover:text-white"><i data-lucide="code" class="w-4 h-4 text-white"></i> HTML5</div>
+            <div class="text-[11px] text-slate-500 font-mono mt-1 truncate">index.html</div>
+          </button>
+          <button type="button" onclick="selectNewFilePreset('text')" class="preset-card p-3 rounded-xl border border-white/15 bg-[#040404] hover:border-white hover:bg-white/10 text-left transition-all group">
+            <div class="text-xs font-bold text-emerald-400 flex items-center gap-1.5 group-hover:text-emerald-300"><i data-lucide="file-text" class="w-4 h-4 text-emerald-400"></i> Text (.txt)</div>
+            <div class="text-[11px] text-slate-500 font-mono mt-1 truncate">notes.txt</div>
+          </button>
+          <button type="button" onclick="selectNewFilePreset('javascript')" class="preset-card p-3 rounded-xl border border-white/15 bg-[#040404] hover:border-white hover:bg-white/10 text-left transition-all group">
+            <div class="text-xs font-bold text-amber-400 flex items-center gap-1.5 group-hover:text-amber-300"><i data-lucide="file-code" class="w-4 h-4 text-amber-400"></i> JavaScript</div>
+            <div class="text-[11px] text-slate-500 font-mono mt-1 truncate">app.js</div>
+          </button>
+          <button type="button" onclick="selectNewFilePreset('css')" class="preset-card p-3 rounded-xl border border-white/15 bg-[#040404] hover:border-white hover:bg-white/10 text-left transition-all group">
+            <div class="text-xs font-bold text-white flex items-center gap-1.5"><i data-lucide="palette" class="w-4 h-4 text-white"></i> Stylesheet</div>
+            <div class="text-[11px] text-slate-500 font-mono mt-1 truncate">style.css</div>
+          </button>
+          <button type="button" onclick="selectNewFilePreset('json')" class="preset-card p-3 rounded-xl border border-white/15 bg-[#040404] hover:border-white hover:bg-white/10 text-left transition-all group">
+            <div class="text-xs font-bold text-white flex items-center gap-1.5"><i data-lucide="braces" class="w-4 h-4 text-white"></i> JSON</div>
+            <div class="text-[11px] text-slate-500 font-mono mt-1 truncate">config.json</div>
+          </button>
+          <button type="button" onclick="selectNewFilePreset('markdown')" class="preset-card p-3 rounded-xl border border-white/15 bg-[#040404] hover:border-white hover:bg-white/10 text-left transition-all group">
+            <div class="text-xs font-bold text-pink-400 flex items-center gap-1.5 group-hover:text-pink-300"><i data-lucide="file-edit" class="w-4 h-4 text-pink-400"></i> Markdown</div>
+            <div class="text-[11px] text-slate-500 font-mono mt-1 truncate">README.md</div>
+          </button>
+          <button type="button" onclick="selectNewFilePreset('sh')" class="preset-card p-3 rounded-xl border border-white/15 bg-[#040404] hover:border-white hover:bg-white/10 text-left transition-all group">
+            <div class="text-xs font-bold text-teal-400 flex items-center gap-1.5 group-hover:text-teal-300"><i data-lucide="terminal" class="w-4 h-4 text-teal-400"></i> Shell Script</div>
+            <div class="text-[11px] text-slate-500 font-mono mt-1 truncate">deploy.sh</div>
+          </button>
+          <button type="button" onclick="selectNewFilePreset('custom')" class="preset-card p-3 rounded-xl border border-white/15 bg-[#040404] hover:border-white hover:bg-white/10 text-left transition-all group">
+            <div class="text-xs font-bold text-slate-300 flex items-center gap-1.5 group-hover:text-white"><i data-lucide="file" class="w-4 h-4 text-slate-400"></i> Custom File</div>
+            <div class="text-[11px] text-slate-500 font-mono mt-1 truncate">Any name</div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Form -->
+      <form onsubmit="handleCreateNewFileSubmit(event)" class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">File Name & Extension</label>
+          <input type="text" id="zencloud-new-filename-input" required placeholder="e.g. index.html or notes.txt" class="w-full pitch-input rounded-xl px-4 py-3 text-sm focus:outline-none font-mono" value="index.html">
+          <div class="flex items-center justify-between text-[11px] text-slate-500 mt-1.5">
+            <span>Location: <span class="font-mono text-white">${escapeHtml(AppState.currentPath || '/')}</span></span>
+            <span id="preset-desc-hint" class="text-slate-300 font-medium">HTML5 Web Document starter</span>
+          </div>
+        </div>
+
+        <input type="hidden" id="zencloud-new-file-preset-key" value="html">
+
+        <div class="flex items-center justify-end gap-2.5 pt-3 border-t border-white/10">
+          <button type="button" onclick="closeNewFileModal()" class="px-4 py-2.5 rounded-xl text-xs font-medium text-slate-400 hover:text-white hover:bg-neutral-800 transition-all">Cancel</button>
+          <button type="submit" class="zencloud-btn-primary px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2">
+            <i data-lucide="check" class="w-4 h-4"></i> Create & Open in Editor
+          </button>
+        </div>
+      </form>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  if (window.lucide) lucide.createIcons();
+  const input = document.getElementById('zencloud-new-filename-input');
+  if (input) {
+    input.focus();
+    input.select();
+  }
+}
+
+function selectNewFilePreset(presetKey) {
+  const input = document.getElementById('zencloud-new-filename-input') || document.getElementById('zenova-new-filename-input');
+  const hidden = document.getElementById('zencloud-new-file-preset-key') || document.getElementById('zenova-new-file-preset-key');
+  const hint = document.getElementById('preset-desc-hint');
+  if (hidden) hidden.value = presetKey;
+
+  if (presetKey === 'custom') {
+    if (input) {
+      input.value = '';
+      input.placeholder = 'e.g. script.py, data.yaml, .env';
+      input.focus();
+    }
+    if (hint) hint.textContent = 'Custom file with any extension';
+    return;
+  }
+
+  const preset = FILE_STARTER_PRESETS[presetKey];
+  if (preset && input) {
+    input.value = preset.name;
+    if (hint) hint.textContent = preset.desc;
+    input.focus();
+    input.select();
+  }
+}
+
+function closeNewFileModal() {
+  const modal = document.getElementById('zencloud-new-file-modal') || document.getElementById('zenova-new-file-modal');
+  if (modal) modal.remove();
+}
+
+async function handleCreateNewFileSubmit(e) {
+  e.preventDefault();
+  const input = document.getElementById('zencloud-new-filename-input') || document.getElementById('zenova-new-filename-input');
+  const presetKey = (document.getElementById('zencloud-new-file-preset-key') || document.getElementById('zenova-new-file-preset-key'))?.value || 'custom';
+  let fileName = (input?.value || '').trim();
+  if (!fileName) return showToast('Please enter a file name.', 'error');
+
+  if (fileName.includes('/') || fileName.includes('\\')) {
+    return showToast('File name cannot contain slashes. Folders are created with New Folder.', 'error');
+  }
+
+  const currentDir = AppState.currentPath || '/';
+  const filePath = currentDir === '/' ? `/${fileName}` : `${currentDir.replace(/\/+$/, '')}/${fileName}`;
+  const initialContent = FILE_STARTER_PRESETS[presetKey]?.content || '';
+
+  try {
+    await apiRequest('/files/create-file', {
+      method: 'POST',
+      body: { path: filePath, content: initialContent }
+    });
+
+    closeNewFileModal();
+    showToast(`Created ${fileName}!`, 'success');
+    await fetchFileList();
+
+    openFileEditor(filePath, initialContent);
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function openFileEditor(filePath, preloadContent = null) {
+  try {
+    if (!AppState.token) throw new Error('Your session has expired. Please log in again.');
+    if (!filePath) return;
+
+    const fileName = filePath.split('/').filter(Boolean).pop() || 'Untitled';
+    const mode = detectAceMode(filePath);
+    const friendlyTypeName = getFriendlyFileTypeName(filePath);
+    const isHtmlOrMd = ['html', 'markdown', 'xml'].includes(mode);
+
+    activeEditorPath = filePath;
+    activeEditorMode = mode;
+    activeEditorIsDirty = false;
+    activeEditorViewMode = isHtmlOrMd && window.innerWidth >= 900 ? 'split' : 'code';
+
+    let content = preloadContent;
+    if (content === null) {
+      setLoading('Loading file into editor...', true);
+      const res = await apiRequest(`/files/content?path=${encodeURIComponent(filePath)}`);
+      setLoading('', false);
+      content = res.content || '';
+    }
+    activeEditorOriginalContent = content;
+
+    const existing = document.getElementById('zencloud-editor-modal') || document.getElementById('zenova-editor-modal');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'zencloud-editor-modal';
+    modal.className = 'fixed inset-0 z-[100] flex flex-col bg-[#000000] text-slate-100 overflow-hidden tab-pane-enter';
+    modal.innerHTML = `
+      <!-- Editor Top Navigation Bar -->
+      <header class="h-14 bg-[#000000] border-b border-[#1c1c1c] px-4 flex items-center justify-between gap-3 shrink-0 select-none">
+        
+        <!-- Left: File Badge, Name & Path -->
+        <div class="flex items-center gap-3 min-w-0">
+          <div class="p-2 rounded-xl bg-white/10 text-white border border-white/20 shrink-0">
+            <i data-lucide="${mode === 'html' ? 'code-2' : mode === 'json' ? 'braces' : mode === 'markdown' ? 'file-edit' : mode === 'javascript' ? 'file-code' : 'file-text'}" class="w-5 h-5"></i>
+          </div>
+          <div class="min-w-0">
+            <div class="flex items-center gap-2">
+              <span class="font-extrabold text-sm text-white truncate max-w-[180px] sm:max-w-xs md:max-w-md" title="${escapeHtml(fileName)}">${escapeHtml(fileName)}</span>
+              <span id="zencloud-editor-dirty-badge" class="hidden items-center gap-1 text-[11px] font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/30">
+                <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span> Unsaved
+              </span>
+              <span id="zencloud-editor-saved-badge" class="hidden items-center gap-1 text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/30">
+                ✓ Saved
+              </span>
+            </div>
+            <div class="flex items-center gap-2 text-[11px] text-slate-400 font-mono truncate">
+              <span>${escapeHtml(filePath)}</span>
+              <span class="text-slate-600">•</span>
+              <span class="text-slate-300 font-sans font-medium">${friendlyTypeName}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Center: View Mode Toggles (For HTML / Markdown / SVG) -->
+        <div class="flex items-center gap-2">
+          ${isHtmlOrMd ? `
+            <div class="hidden sm:flex bg-[#121212] p-1 rounded-xl border border-white/15" id="editor-view-mode-group">
+              <button onclick="setEditorViewMode('code')" id="view-mode-code-btn" class="px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${activeEditorViewMode === 'code' ? 'bg-white text-black font-bold shadow-sm' : 'text-slate-400 hover:text-white'}" title="Code Editor Only">
+                <span class="flex items-center gap-1.5"><i data-lucide="code" class="w-3.5 h-3.5"></i> Code</span>
+              </button>
+              <button onclick="setEditorViewMode('split')" id="view-mode-split-btn" class="px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${activeEditorViewMode === 'split' ? 'bg-white text-black font-bold shadow-sm' : 'text-slate-400 hover:text-white'}" title="Split Screen Live Preview">
+                <span class="flex items-center gap-1.5"><i data-lucide="columns-2" class="w-3.5 h-3.5"></i> Split View</span>
+              </button>
+              <button onclick="setEditorViewMode('preview')" id="view-mode-preview-btn" class="px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${activeEditorViewMode === 'preview' ? 'bg-white text-black font-bold shadow-sm' : 'text-slate-400 hover:text-white'}" title="Live Rendered Preview">
+                <span class="flex items-center gap-1.5"><i data-lucide="eye" class="w-3.5 h-3.5"></i> Live Preview</span>
+              </button>
+            </div>
+          ` : ''}
+
+          <!-- Format Code Button -->
+          <button onclick="formatEditorCode()" class="hidden md:flex items-center gap-1.5 bg-[#121212] hover:bg-white/10 text-slate-300 hover:text-white border border-white/15 px-2.5 py-1.5 rounded-xl text-xs font-medium transition-all" title="Format / Prettify Code">
+            <i data-lucide="wand-2" class="w-3.5 h-3.5 text-white"></i> Format
+          </button>
+
+          <!-- Syntax Mode Selector -->
+          <select onchange="setEditorSyntaxMode(this.value)" id="editor-syntax-select" class="hidden lg:block bg-[#121212] border border-white/15 text-slate-300 text-xs rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-white">
+            <option value="html" ${mode === 'html' ? 'selected' : ''}>HTML5</option>
+            <option value="javascript" ${mode === 'javascript' ? 'selected' : ''}>JavaScript</option>
+            <option value="css" ${mode === 'css' ? 'selected' : ''}>CSS</option>
+            <option value="json" ${mode === 'json' ? 'selected' : ''}>JSON</option>
+            <option value="markdown" ${mode === 'markdown' ? 'selected' : ''}>Markdown</option>
+            <option value="text" ${mode === 'text' ? 'selected' : ''}>Plain Text</option>
+            <option value="sh" ${mode === 'sh' ? 'selected' : ''}>Shell Script</option>
+            <option value="python" ${mode === 'python' ? 'selected' : ''}>Python</option>
+            <option value="sql" ${mode === 'sql' ? 'selected' : ''}>SQL</option>
+            <option value="yaml" ${mode === 'yaml' ? 'selected' : ''}>YAML</option>
+            <option value="xml" ${mode === 'xml' ? 'selected' : ''}>XML / SVG</option>
+          </select>
+
+          <!-- Word Wrap Toggle -->
+          <button onclick="toggleEditorWordWrap()" id="editor-wrap-btn" class="hidden md:flex items-center gap-1 bg-[#121212] hover:bg-white/10 text-slate-300 hover:text-white border border-white/15 px-2 py-1.5 rounded-xl text-xs font-medium" title="Toggle Word Wrap">
+            <i data-lucide="wrap-text" class="w-3.5 h-3.5 text-white"></i> Wrap
+          </button>
+        </div>
+
+        <!-- Right: Action Buttons (Save, Save & Close, Close) -->
+        <div class="flex items-center gap-2 shrink-0">
+          <button onclick="saveEditorContent()" id="zencloud-editor-save-btn" class="zencloud-btn-primary flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold shadow-md cursor-pointer">
+            <i data-lucide="save" class="w-4 h-4"></i>
+            <span class="hidden sm:inline">Save</span>
+            <span class="text-[10px] opacity-75 font-mono hidden md:inline">Ctrl+S</span>
+          </button>
+
+          <button onclick="saveAndCloseEditor()" class="hidden sm:flex items-center gap-1.5 bg-[#121212] hover:bg-white/10 text-white border border-white/20 px-3 py-2 rounded-xl text-xs font-semibold transition-all">
+            Save & Exit
+          </button>
+
+          <button onclick="downloadEditorFile()" class="hidden md:flex p-2 text-slate-400 hover:text-white rounded-xl hover:bg-neutral-800" title="Download copy">
+            <i data-lucide="download" class="w-4 h-4"></i>
+          </button>
+
+          <button onclick="closeFileEditor()" class="p-2 text-slate-400 hover:text-white rounded-xl hover:bg-red-600/80 transition-all" title="Close editor">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+      </header>
+
+      <!-- Editor Main Workspace (Split / Full View) -->
+      <div id="zencloud-editor-workspace" class="flex-1 flex flex-col md:flex-row min-h-0 w-full overflow-hidden relative">
+        
+        <!-- Code Editor Panel -->
+        <div id="zencloud-code-pane" class="flex-1 h-full min-h-0 flex flex-col bg-[#000000] relative overflow-hidden">
+          <div id="zencloud-code-editor" class="w-full h-full"></div>
+          <textarea id="zencloud-textarea-fallback" class="hidden w-full h-full p-4 bg-[#000000] text-slate-100 font-mono text-xs leading-relaxed focus:outline-none resize-none selection:bg-white selection:text-black"></textarea>
+        </div>
+
+        <!-- Live Preview Panel (Split / Preview) -->
+        <div id="zencloud-preview-pane" class="${isHtmlOrMd && activeEditorViewMode !== 'code' ? 'flex' : 'hidden'} flex-1 h-full min-h-0 flex-col bg-[#020202] border-l border-[#1c1c1c] overflow-hidden">
+          <div class="h-9 px-3 bg-[#000000] border-b border-[#1c1c1c] flex items-center justify-between text-xs text-slate-400 shrink-0 select-none">
+            <div class="flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span class="font-bold text-white uppercase text-[10px] tracking-wider">Live Preview Render</span>
+              <span id="preview-render-type" class="text-[10px] text-white font-mono">(${mode.toUpperCase()})</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <button onclick="updateLivePreview()" class="p-1 text-slate-400 hover:text-white rounded hover:bg-neutral-800" title="Refresh Live Preview">
+                <i data-lucide="rotate-cw" class="w-3.5 h-3.5"></i>
+              </button>
+              ${mode === 'html' ? `
+                <button onclick="openLivePreviewInNewTab()" class="p-1 text-slate-400 hover:text-white rounded hover:bg-neutral-800" title="Open in browser window">
+                  <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+                </button>
+              ` : ''}
+            </div>
+          </div>
+
+          <div class="flex-1 min-h-0 w-full overflow-auto relative">
+            <!-- HTML Live Iframe -->
+            <iframe id="zencloud-live-preview-iframe" class="${mode === 'html' ? 'block' : 'hidden'} w-full h-full border-0 bg-white" sandbox="allow-scripts allow-modals allow-forms"></iframe>
+            <!-- Markdown Live Pane -->
+            <div id="zencloud-markdown-preview-pane" class="${mode === 'markdown' ? 'block' : 'hidden'} w-full h-full p-6 overflow-auto markdown-body bg-[#000000]"></div>
+            <!-- SVG / XML Live Pane -->
+            <div id="zencloud-svg-preview-pane" class="${mode === 'xml' ? 'flex' : 'hidden'} w-full h-full p-6 overflow-auto items-center justify-center bg-[#000000]"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Editor Bottom Status Bar -->
+      <footer class="h-7 bg-[#000000] border-t border-[#1c1c1c] px-4 flex items-center justify-between text-[11px] text-slate-400 shrink-0 font-mono select-none">
+        <div class="flex items-center gap-4">
+          <span id="editor-cursor-pos">Ln 1, Col 1</span>
+          <span class="hidden sm:inline text-slate-600">|</span>
+          <span id="editor-lines-count" class="hidden sm:inline">Lines: 1</span>
+          <span class="hidden md:inline text-slate-600">|</span>
+          <span id="editor-chars-count" class="hidden md:inline">Chars: 0</span>
+        </div>
+        <div class="flex items-center gap-3">
+          <span class="text-white font-semibold" id="editor-status-mode">${mode.toUpperCase()}</span>
+          <span class="text-slate-600">•</span>
+          <span>UTF-8</span>
+          <span class="hidden lg:inline text-slate-600">•</span>
+          <span class="hidden lg:inline text-slate-500">Spaces: 2</span>
+        </div>
+      </footer>
+    `;
+
+    document.body.appendChild(modal);
+    if (window.lucide) lucide.createIcons();
+
+    initAceEditorInstance(content, mode);
+    setEditorViewMode(activeEditorViewMode);
+    setupEditorKeyboardShortcuts();
+
+  } catch (err) {
+    setLoading('', false);
+    showToast(err.message, 'error');
+  }
+}
+
+function initAceEditorInstance(content, mode) {
+  const container = document.getElementById('zencloud-code-editor') || document.getElementById('zenova-code-editor');
+  const fallback = document.getElementById('zencloud-textarea-fallback') || document.getElementById('zenova-textarea-fallback');
+
+  if (window.ace && container) {
+    try {
+      const editor = ace.edit(container);
+      editor.setTheme('ace/theme/tomorrow_night_eighties');
+      editor.session.setMode(`ace/mode/${mode}`);
+      editor.setValue(content || '', -1);
+      editor.setFontSize(activeEditorFontSize);
+      editor.session.setUseWrapMode(activeEditorWrap);
+      editor.setOptions({
+        enableBasicAutocompletion: true,
+        enableLiveAutocompletion: true,
+        enableSnippets: true,
+        showPrintMargin: false,
+        highlightActiveLine: true,
+        tabSize: 2,
+        useSoftTabs: true
+      });
+
+      editor.commands.addCommand({
+        name: 'saveFile',
+        bindKey: { win: 'Ctrl-S', mac: 'Command-S' },
+        exec: function() {
+          saveEditorContent();
+        }
+      });
+
+      editor.session.on('change', () => {
+        markEditorDirty(true);
+        updateEditorMetrics();
+        if (['html', 'markdown', 'xml'].includes(activeEditorMode)) {
+          triggerDebouncedLivePreview();
+        }
+      });
+
+      editor.selection.on('changeCursor', () => {
+        const pos = editor.getCursorPosition();
+        const el = document.getElementById('editor-cursor-pos');
+        if (el) el.textContent = `Ln ${pos.row + 1}, Col ${pos.column + 1}`;
+      });
+
+      activeAceInstance = editor;
+      updateEditorMetrics();
+      updateLivePreview();
+      return;
+    } catch (e) {
+      console.warn('Ace editor initialization fallback:', e);
+    }
+  }
+
+  if (container) container.classList.add('hidden');
+  if (fallback) {
+    fallback.classList.remove('hidden');
+    fallback.value = content || '';
+    fallback.addEventListener('input', () => {
+      markEditorDirty(true);
+      updateEditorMetrics();
+      triggerDebouncedLivePreview();
+    });
+    fallback.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        saveEditorContent();
+      }
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const start = fallback.selectionStart;
+        const end = fallback.selectionEnd;
+        fallback.value = fallback.value.substring(0, start) + '  ' + fallback.value.substring(end);
+        fallback.selectionStart = fallback.selectionEnd = start + 2;
+      }
+    });
+  }
+}
+
+function getEditorCurrentValue() {
+  if (activeAceInstance) {
+    return activeAceInstance.getValue();
+  }
+  const fallback = document.getElementById('zencloud-textarea-fallback') || document.getElementById('zenova-textarea-fallback');
+  return fallback ? fallback.value : '';
+}
+
+function setEditorCurrentValue(newContent) {
+  if (activeAceInstance) {
+    activeAceInstance.setValue(newContent, -1);
+  } else {
+    const fallback = document.getElementById('zencloud-textarea-fallback') || document.getElementById('zenova-textarea-fallback');
+    if (fallback) fallback.value = newContent;
+  }
+}
+
+function updateLivePreview() {
+  const content = getEditorCurrentValue();
+  if (activeEditorMode === 'html') {
+    const iframe = document.getElementById('zencloud-live-preview-iframe') || document.getElementById('zenova-live-preview-iframe');
+    if (iframe) {
+      iframe.srcdoc = content;
+    }
+  } else if (activeEditorMode === 'markdown') {
+    const pane = document.getElementById('zencloud-markdown-preview-pane') || document.getElementById('zenova-markdown-preview-pane');
+    if (pane) {
+      pane.innerHTML = window.marked ? marked.parse(content) : `<pre>${escapeHtml(content)}</pre>`;
+    }
+  } else if (activeEditorMode === 'xml') {
+    const pane = document.getElementById('zencloud-svg-preview-pane') || document.getElementById('zenova-svg-preview-pane');
+    if (pane) {
+      if (content.trim().startsWith('<svg')) {
+        pane.innerHTML = content;
+      } else {
+        pane.innerHTML = `<pre class="text-xs text-slate-400 font-mono">${escapeHtml(content)}</pre>`;
+      }
+    }
+  }
+}
+
+function triggerDebouncedLivePreview() {
+  if (livePreviewDebounceTimer) clearTimeout(livePreviewDebounceTimer);
+  livePreviewDebounceTimer = setTimeout(() => {
+    updateLivePreview();
+  }, 250);
+}
+
+function openLivePreviewInNewTab() {
+  const content = getEditorCurrentValue();
+  const blob = new Blob([content], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+}
+
+function setEditorViewMode(mode) {
+  activeEditorViewMode = mode;
+  const codePane = document.getElementById('zencloud-code-pane') || document.getElementById('zenova-code-pane');
+  const previewPane = document.getElementById('zencloud-preview-pane') || document.getElementById('zenova-preview-pane');
+  const codeBtn = document.getElementById('view-mode-code-btn');
+  const splitBtn = document.getElementById('view-mode-split-btn');
+  const previewBtn = document.getElementById('view-mode-preview-btn');
+
+  const activeBtnClass = 'bg-white text-black font-bold shadow-sm';
+  const inactiveBtnClass = 'text-slate-400 hover:text-white';
+
+  [codeBtn, splitBtn, previewBtn].forEach(b => {
+    if (b) {
+      b.className = b.className.replace(activeBtnClass, '').replace(inactiveBtnClass, '').trim() + ' ' + inactiveBtnClass;
+    }
+  });
+
+  if (mode === 'code') {
+    if (codeBtn) codeBtn.className = codeBtn.className.replace(inactiveBtnClass, '').trim() + ' ' + activeBtnClass;
+    if (codePane) {
+      codePane.classList.remove('hidden');
+      codePane.style.display = 'flex';
+      codePane.style.flex = '1';
+    }
+    if (previewPane) {
+      previewPane.classList.add('hidden');
+      previewPane.style.display = 'none';
+    }
+  } else if (mode === 'preview') {
+    if (previewBtn) previewBtn.className = previewBtn.className.replace(inactiveBtnClass, '').trim() + ' ' + activeBtnClass;
+    if (codePane) {
+      codePane.classList.add('hidden');
+      codePane.style.display = 'none';
+    }
+    if (previewPane) {
+      previewPane.classList.remove('hidden');
+      previewPane.style.display = 'flex';
+      previewPane.style.flex = '1';
+    }
+    updateLivePreview();
+  } else {
+    // split view
+    if (splitBtn) splitBtn.className = splitBtn.className.replace(inactiveBtnClass, '').trim() + ' ' + activeBtnClass;
+    if (codePane) {
+      codePane.classList.remove('hidden');
+      codePane.style.display = 'flex';
+      codePane.style.flex = '1';
+    }
+    if (previewPane) {
+      previewPane.classList.remove('hidden');
+      previewPane.style.display = 'flex';
+      previewPane.style.flex = '1';
+    }
+    updateLivePreview();
+  }
+
+  if (activeAceInstance) {
+    setTimeout(() => activeAceInstance.resize(), 50);
+  }
+}
+
+function formatEditorCode() {
+  const content = getEditorCurrentValue();
+  if (activeEditorMode === 'json') {
+    try {
+      const parsed = JSON.parse(content);
+      const formatted = JSON.stringify(parsed, null, 2);
+      setEditorCurrentValue(formatted);
+      showToast('JSON formatted successfully!', 'success');
+      markEditorDirty(true);
+    } catch (err) {
+      showToast(`Invalid JSON: ${err.message}`, 'error');
+    }
+  } else {
+    showToast(`Code formatted for ${activeEditorMode.toUpperCase()}`, 'info');
+  }
+}
+
+function setEditorSyntaxMode(newMode) {
+  activeEditorMode = newMode;
+  if (activeAceInstance) {
+    activeAceInstance.session.setMode(`ace/mode/${newMode}`);
+  }
+  const statusMode = document.getElementById('editor-status-mode');
+  if (statusMode) statusMode.textContent = newMode.toUpperCase();
+
+  const iframe = document.getElementById('zencloud-live-preview-iframe') || document.getElementById('zenova-live-preview-iframe');
+  const mdPane = document.getElementById('zencloud-markdown-preview-pane') || document.getElementById('zenova-markdown-preview-pane');
+  const svgPane = document.getElementById('zencloud-svg-preview-pane') || document.getElementById('zenova-svg-preview-pane');
+  const renderType = document.getElementById('preview-render-type');
+  if (renderType) renderType.textContent = `(${newMode.toUpperCase()})`;
+
+  if (iframe) iframe.className = newMode === 'html' ? 'block w-full h-full border-0 bg-white' : 'hidden';
+  if (mdPane) mdPane.className = newMode === 'markdown' ? 'block w-full h-full p-6 overflow-auto markdown-body bg-[#000000]' : 'hidden';
+  if (svgPane) svgPane.className = newMode === 'xml' ? 'flex w-full h-full p-6 overflow-auto items-center justify-center bg-[#000000]' : 'hidden';
+
+  updateLivePreview();
+}
+
+function toggleEditorWordWrap() {
+  activeEditorWrap = !activeEditorWrap;
+  if (activeAceInstance) {
+    activeAceInstance.session.setUseWrapMode(activeEditorWrap);
+  }
+  const btn = document.getElementById('editor-wrap-btn');
+  if (btn) {
+    btn.classList.toggle('bg-white', activeEditorWrap);
+    btn.classList.toggle('text-black', activeEditorWrap);
+    btn.classList.toggle('font-bold', activeEditorWrap);
+  }
+  showToast(`Word wrap: ${activeEditorWrap ? 'On' : 'Off'}`, 'info');
+}
+
+async function saveEditorContent() {
+  const content = getEditorCurrentValue();
+  const saveBtn = document.getElementById('zencloud-editor-save-btn') || document.getElementById('zenova-editor-save-btn');
+  const originalText = saveBtn ? saveBtn.innerHTML : '';
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Saving...`;
+  }
+
+  try {
+    await apiRequest('/files/save-content', {
+      method: 'POST',
+      body: {
+        path: activeEditorPath,
+        content: content
+      }
+    });
+
+    activeEditorOriginalContent = content;
+    markEditorDirty(false);
+    showToast(`Saved ${activeEditorPath.split('/').pop()} successfully!`, 'success');
+
+    if (AppState.currentTab === 'files') {
+      fetchFileList();
+    }
+  } catch (err) {
+    showToast(err.message, 'error');
+  } finally {
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.innerHTML = originalText;
+      if (window.lucide) lucide.createIcons();
+    }
+  }
+}
+
+async function saveAndCloseEditor() {
+  await saveEditorContent();
+  closeFileEditor(true);
+}
+
+function closeFileEditor(force = false) {
+  if (!force && activeEditorIsDirty) {
+    const confirmClose = confirm('You have unsaved changes in this file. Discard changes and exit editor?');
+    if (!confirmClose) return;
+  }
+
+  const modal = document.getElementById('zencloud-editor-modal') || document.getElementById('zenova-editor-modal');
+  if (modal) modal.remove();
+
+  if (activeAceInstance) {
+    try {
+      activeAceInstance.destroy();
+    } catch (_) {}
+    activeAceInstance = null;
+  }
+  activeEditorPath = '';
+  activeEditorIsDirty = false;
+}
+
+function markEditorDirty(isDirty) {
+  activeEditorIsDirty = isDirty;
+  const dirtyBadge = document.getElementById('zencloud-editor-dirty-badge') || document.getElementById('zenova-editor-dirty-badge');
+  const savedBadge = document.getElementById('zencloud-editor-saved-badge') || document.getElementById('zenova-editor-saved-badge');
+  if (dirtyBadge) dirtyBadge.classList.toggle('hidden', !isDirty);
+  if (savedBadge) savedBadge.classList.toggle('hidden', isDirty);
+}
+
+function updateEditorMetrics() {
+  const content = getEditorCurrentValue();
+  const lines = content.split('\n').length;
+  const chars = content.length;
+  const linesEl = document.getElementById('editor-lines-count');
+  const charsEl = document.getElementById('editor-chars-count');
+  if (linesEl) linesEl.textContent = `Lines: ${lines.toLocaleString()}`;
+  if (charsEl) charsEl.textContent = `Chars: ${chars.toLocaleString()}`;
+}
+
+function downloadEditorFile() {
+  const content = getEditorCurrentValue();
+  const fileName = activeEditorPath.split('/').pop() || 'file.txt';
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function setupEditorKeyboardShortcuts() {
+  const handler = (e) => {
+    const modal = document.getElementById('zencloud-editor-modal') || document.getElementById('zenova-editor-modal');
+    if (!modal) {
+      window.removeEventListener('keydown', handler);
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+      e.preventDefault();
+      saveEditorContent();
+    }
+    if (e.key === 'Escape') {
+      closeFileEditor();
+    }
+  };
+  window.addEventListener('keydown', handler);
+}
+
 function openFileContextMenu(filePath, isDirectory, e) {
   const existing = document.getElementById('file-context-menu');
   if (existing) existing.remove();
 
   const menu = document.createElement('div');
   menu.id = 'file-context-menu';
-  menu.className = 'fixed bg-slate-950 border border-slate-800 rounded-xl shadow-2xl p-2 z-50 text-xs w-48 space-y-1';
+  menu.className = 'fixed bg-[#080808] border border-white/20 rounded-xl shadow-2xl p-2 z-50 text-xs w-52 space-y-1';
 
   const ext = filePath.toLowerCase();
   const isArchive = ext.endsWith('.zip') || ext.endsWith('.tar') || ext.endsWith('.tar.gz') || ext.endsWith('.7z');
+  const canEdit = !isDirectory && isEditableFile(filePath);
 
   menu.innerHTML = `
-    <button onclick="downloadSingleFile('${filePath}')" class="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 flex items-center gap-2 text-slate-200">
-      <i data-lucide="download" class="w-3.5 h-3.5 text-sky-400"></i> Download
+    ${canEdit ? `
+      <button onclick="openFileEditor('${filePath}')" class="w-full text-left px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 flex items-center gap-2 text-white font-semibold border border-white/20 mb-1 transition-all">
+        <i data-lucide="code-2" class="w-4 h-4 text-white"></i> Edit in Editor
+      </button>
+    ` : ''}
+
+    <button onclick="downloadSingleFile('${filePath}')" class="w-full text-left px-3 py-2 rounded-lg hover:bg-neutral-800 flex items-center gap-2 text-slate-200">
+      <i data-lucide="download" class="w-3.5 h-3.5 text-white"></i> Download
     </button>
 
-    <button onclick="openEmbedLinkModal('${filePath}')" class="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 flex items-center gap-2 text-cyan-300">
-      <i data-lucide="link-2" class="w-3.5 h-3.5 text-cyan-400"></i> Direct Embed / Public Link
+    <button onclick="openEmbedLinkModal('${filePath}')" class="w-full text-left px-3 py-2 rounded-lg hover:bg-neutral-800 flex items-center gap-2 text-white">
+      <i data-lucide="link-2" class="w-3.5 h-3.5 text-white"></i> Direct Embed / Public Link
     </button>
 
-    <button onclick="createShareLinkModal('${filePath}')" class="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 flex items-center gap-2 text-slate-200">
+    <button onclick="createShareLinkModal('${filePath}')" class="w-full text-left px-3 py-2 rounded-lg hover:bg-neutral-800 flex items-center gap-2 text-slate-200">
       <i data-lucide="share-2" class="w-3.5 h-3.5 text-emerald-400"></i> Create Share Link
     </button>
 
-    <button onclick="renameFilePrompt('${filePath}')" class="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 flex items-center gap-2 text-slate-200">
+    <button onclick="renameFilePrompt('${filePath}')" class="w-full text-left px-3 py-2 rounded-lg hover:bg-neutral-800 flex items-center gap-2 text-slate-200">
       <i data-lucide="edit-3" class="w-3.5 h-3.5 text-amber-400"></i> Rename
     </button>
 
-    <button onclick="moveFilePrompt('${filePath}')" class="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 flex items-center gap-2 text-slate-200">
-      <i data-lucide="folder-input" class="w-3.5 h-3.5 text-cyan-400"></i> Move to...
+    <button onclick="moveFilePrompt('${filePath}')" class="w-full text-left px-3 py-2 rounded-lg hover:bg-neutral-800 flex items-center gap-2 text-slate-200">
+      <i data-lucide="folder-input" class="w-3.5 h-3.5 text-white"></i> Move to...
     </button>
 
     ${isArchive ? `
-      <button onclick="extractArchivePrompt('${filePath}')" class="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 flex items-center gap-2 text-purple-400">
+      <button onclick="extractArchivePrompt('${filePath}')" class="w-full text-left px-3 py-2 rounded-lg hover:bg-neutral-800 flex items-center gap-2 text-white">
         <i data-lucide="file-archive" class="w-3.5 h-3.5"></i> Extract Archive
       </button>
     ` : ''}
@@ -1784,7 +3366,7 @@ function openEmbedLinkModal(filePath) {
     <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl text-slate-100">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2 font-bold text-base text-white">
-          <i data-lucide="link-2" class="w-5 h-5 text-cyan-400"></i>
+          <i data-lucide="link-2" class="w-5 h-5 text-white"></i>
           Direct Embed & Public Link
         </div>
         <button onclick="document.getElementById('embed-link-modal').remove()" class="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all">
@@ -1800,8 +3382,8 @@ function openEmbedLinkModal(filePath) {
         <div>
           <label class="block font-semibold text-slate-300 mb-1">Direct Embed URL (Inline View)</label>
           <div class="flex gap-2">
-            <input type="text" readonly value="${directEmbedUrl}" class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-cyan-300 font-mono text-[11px] focus:outline-none">
-            <button onclick="copyToClipboard('${directEmbedUrl}', this, 'Copied Direct URL!')" class="px-3 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl font-semibold shrink-0 transition-all">Copy</button>
+            <input type="text" readonly value="${directEmbedUrl}" class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono text-[11px] focus:outline-none">
+            <button onclick="copyToClipboard('${directEmbedUrl}', this, 'Copied Direct URL!')" class="zencloud-btn-primary px-3 py-2 bg-white hover:bg-neutral-200 text-black font-bold rounded-xl shrink-0 transition-all">Copy</button>
           </div>
         </div>
 
@@ -1832,9 +3414,9 @@ function openEmbedLinkModal(filePath) {
 
       <div class="flex items-center justify-between pt-3 border-t border-slate-800">
         <a href="${directEmbedUrl}" target="_blank" rel="noopener noreferrer" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs rounded-xl flex items-center gap-1.5 transition-all">
-          <i data-lucide="external-link" class="w-3.5 h-3.5 text-cyan-400"></i> Open in New Tab
+          <i data-lucide="external-link" class="w-3.5 h-3.5 text-white"></i> Open in New Tab
         </a>
-        <button onclick="document.getElementById('embed-link-modal').remove()" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold rounded-xl transition-all">
+        <button onclick="document.getElementById('embed-link-modal').remove()" class="zencloud-btn-primary px-4 py-2 bg-white hover:bg-neutral-200 text-black font-bold text-xs rounded-xl transition-all">
           Done
         </button>
       </div>
@@ -1873,16 +3455,23 @@ async function openFilePreview(filePath) {
     closeFilePreview();
     const drawer = document.createElement('div');
     drawer.id = 'file-preview-drawer';
-    drawer.className = 'fixed right-0 top-0 h-full bg-slate-950 border-l border-slate-800 shadow-2xl z-[80] flex flex-col translate-x-0';
+    drawer.className = 'fixed right-0 top-0 h-full bg-[#000000] border-l border-white/20 shadow-2xl z-[80] flex flex-col translate-x-0';
     drawer.innerHTML = `
-      <div class="flex items-center justify-between gap-3 px-4 py-3 border-b border-slate-800 bg-slate-950/95 shrink-0">
+      <div class="flex items-center justify-between gap-3 px-4 py-3 border-b border-white/10 bg-[#080808] shrink-0">
         <div class="min-w-0">
           <div class="text-xs text-slate-500">Preview</div>
           <div class="text-sm font-semibold text-white truncate" title="${escapeHtml(fileName)}">${escapeHtml(fileName)}</div>
         </div>
-        <button onclick="closeFilePreview()" class="p-2 rounded-lg bg-slate-800 hover:bg-red-600/80 text-slate-300 hover:text-white shrink-0" title="Close preview">
-          <i data-lucide="x" class="w-5 h-5"></i>
-        </button>
+        <div class="flex items-center gap-2">
+          ${isEditableFile(filePath) ? `
+            <button onclick="closeFilePreview(); openFileEditor('${filePath}')" class="zencloud-btn-primary px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm">
+              <i data-lucide="code-2" class="w-3.5 h-3.5"></i> Edit
+            </button>
+          ` : ''}
+          <button onclick="closeFilePreview()" class="p-2 rounded-lg bg-slate-800 hover:bg-red-600/80 text-slate-300 hover:text-white shrink-0" title="Close preview">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
       </div>
       <div id="file-preview-body" class="flex-1 overflow-auto p-4 flex items-center justify-center bg-black/20">
         ${isImage
@@ -1892,7 +3481,7 @@ async function openFilePreview(filePath) {
             : `<div class="text-sm text-slate-400 flex items-center gap-2"><i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Loading preview...</div>`}
       </div>
       <div class="px-4 py-3 border-t border-slate-800 text-[11px] text-slate-500 shrink-0">
-        Preview is read-only. Use Download from the file menu to save a copy to your device.
+        Preview is read-only. Use Edit to open the built-in code editor or Download to save locally.
       </div>
     `;
     document.body.appendChild(drawer);
@@ -1924,9 +3513,20 @@ async function openFilePreview(filePath) {
 
     if (contentType === 'application/pdf') {
       body.innerHTML = `<iframe src="${previewUrl}" class="w-full h-full min-h-[70vh] rounded-xl bg-white border border-slate-800"></iframe>`;
-    } else if (contentType.startsWith('text/') || contentType.includes('json') || contentType.includes('javascript')) {
+    } else if (contentType.startsWith('text/') || contentType.includes('json') || contentType.includes('javascript') || isEditableFile(filePath)) {
       const text = await res.text();
-      body.innerHTML = `<pre class="w-full whitespace-pre-wrap break-words text-xs leading-5 text-slate-300 bg-slate-900 rounded-xl p-4 overflow-auto">${escapeHtml(text)}</pre>`;
+      body.innerHTML = `
+        <div class="w-full h-full flex flex-col p-1 space-y-2">
+          <div class="flex justify-between items-center px-1">
+            <span class="text-xs text-slate-400 font-mono">${escapeHtml(fileName)}</span>
+            <button onclick="closeFilePreview(); openFileEditor('${filePath}')" class="zencloud-btn-primary px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm">
+              <i data-lucide="edit-3" class="w-3.5 h-3.5"></i> Open in Inbuilt Editor
+            </button>
+          </div>
+          <pre class="flex-1 w-full whitespace-pre-wrap break-words text-xs leading-5 text-neutral-200 bg-[#050505] border border-white/20 rounded-xl p-4 overflow-auto font-mono">${escapeHtml(text)}</pre>
+        </div>
+      `;
+      if (window.lucide) lucide.createIcons();
     } else {
       body.innerHTML = `<div class="text-center text-slate-400 text-sm p-6"><i data-lucide="file-question" class="w-10 h-10 mx-auto mb-3 text-slate-600"></i><p>This file type cannot be previewed.</p></div>`;
       if (window.lucide) lucide.createIcons();
@@ -2027,7 +3627,7 @@ async function loadUrlDownloadJobs() {
         <div class="space-y-2">
           ${jobs.slice(0, 20).map(j => {
             const progress = Math.max(0, Math.min(100, Number(j.progress || 0)));
-            const statusClass = j.status === 'completed' ? 'text-emerald-400' : j.status === 'failed' ? 'text-red-400' : 'text-cyan-400';
+            const statusClass = j.status === 'completed' ? 'text-emerald-400' : j.status === 'failed' ? 'text-red-400' : 'text-white font-semibold';
             const bytes = Number(j.bytes || 0);
             const total = Number(j.total_bytes || 0);
             const speed = Number(j.speed_bytes_per_sec || 0);
@@ -2051,10 +3651,10 @@ async function loadUrlDownloadJobs() {
                 ${j.status === 'running' || j.status === 'queued' ? `
                   <div class="mt-2 flex items-center justify-between gap-3 text-[10px]">
                     <span class="text-slate-400 font-mono">${j.status === 'queued' ? 'Waiting to start…' : detail}</span>
-                    <span class="text-cyan-300 font-semibold">${progress}%</span>
+                    <span class="text-white font-bold">${progress}%</span>
                   </div>
                   <div class="mt-1.5 h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                    <div class="h-full bg-cyan-500 transition-[width] duration-500" style="width:${progress}%"></div>
+                    <div class="h-full bg-white transition-[width] duration-500 shadow-[0_0_8px_rgba(255,255,255,0.8)]" style="width:${progress}%"></div>
                   </div>` : ''}
                 ${j.status === 'completed' ? `<div class="mt-1 text-[10px] text-slate-500">${detail}</div>` : ''}
               </div>`;
@@ -2096,16 +3696,16 @@ async function renderS3ClusterTab(container) {
   container.innerHTML = `
     <div class="space-y-6 tab-pane-enter">
       <!-- Header Banner -->
-      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 rounded-2xl bg-gradient-to-r from-cyan-950/40 via-sky-950/20 to-black border border-cyan-500/20 shadow-2xl">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 rounded-2xl bg-gradient-to-r from-neutral-950/80 via-neutral-900/40 to-black border border-white/20 shadow-2xl">
         <div class="flex items-start gap-4">
-          <div class="w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shrink-0 shadow-lg shadow-cyan-500/10">
-            <i data-lucide="cloud-lightning" class="w-6 h-6 animate-pulse"></i>
+          <div class="w-12 h-12 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center text-white shrink-0 shadow-lg shadow-white/10">
+            <i data-lucide="cloud-lightning" class="w-6 h-6"></i>
           </div>
           <div>
             <div class="flex flex-wrap items-center gap-2">
               <h2 class="text-xl font-bold text-white tracking-tight">S3 Cluster & Vercel Blob API</h2>
               <span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Free & Active</span>
-              <span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">Zero Egress Fees</span>
+              <span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-white/10 text-white border border-white/20">Zero Egress Fees</span>
             </div>
             <p class="text-xs text-neutral-400 mt-1 max-w-2xl leading-relaxed">
               Use your VPS storage as an AWS S3-compatible object store and Vercel Blob cluster for free. Connect your Next.js, Node.js, Python, or mobile apps using standard S3 and Blob client libraries.
@@ -2114,8 +3714,8 @@ async function renderS3ClusterTab(container) {
         </div>
 
         <div class="flex items-center gap-2 shrink-0">
-          <button onclick="openCreateApiKeyModal()" class="inline-flex items-center gap-2 bg-gradient-to-r from-sky-500 to-cyan-500 hover:from-sky-400 hover:to-cyan-400 text-black font-bold text-xs px-4 py-2.5 rounded-xl shadow-lg shadow-cyan-500/25 transition-all transform hover:scale-[1.02]">
-            <i data-lucide="key" class="w-4 h-4"></i> Create API Key
+          <button onclick="openCreateApiKeyModal()" class="zencloud-btn-primary inline-flex items-center gap-2 bg-white hover:bg-neutral-200 text-black font-bold text-xs px-4 py-2.5 rounded-xl shadow-lg shadow-white/20 transition-all">
+            <i data-lucide="key" class="w-4 h-4 text-black"></i> Create API Key
           </button>
           <button onclick="renderS3ClusterTab(document.getElementById('tab-content-area'))" class="p-2.5 bg-[#121217] hover:bg-[#1a1a22] text-neutral-300 rounded-xl border border-[#22222a] transition-all" title="Refresh">
             <i data-lucide="refresh-cw" class="w-4 h-4"></i>
@@ -2124,20 +3724,20 @@ async function renderS3ClusterTab(container) {
       </div>
 
       <!-- Quick VPS Installer Banner -->
-      <div class="p-4 rounded-2xl bg-[#07070a] border border-cyan-500/20 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 shadow-lg">
+      <div class="p-4 rounded-2xl bg-[#07070a] border border-white/15 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 shadow-lg">
         <div class="flex items-center gap-3">
-          <div class="w-9 h-9 rounded-xl bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 flex items-center justify-center font-mono font-bold text-xs shrink-0">
+          <div class="w-9 h-9 rounded-xl bg-white/10 border border-white/20 text-white flex items-center justify-center font-mono font-bold text-xs shrink-0">
             <i data-lucide="terminal" class="w-4 h-4"></i>
           </div>
           <div>
             <div class="text-xs font-semibold text-white flex items-center gap-2">
               Automated Interactive VPS Setup Installer
-              <span class="text-[10px] px-1.5 py-0.5 bg-cyan-950 text-cyan-300 rounded border border-cyan-800 font-bold">1-Command Setup</span>
+              <span class="text-[10px] px-1.5 py-0.5 bg-white/15 text-white rounded border border-white/20 font-bold">1-Command Setup</span>
             </div>
             <div class="text-[11px] text-neutral-400 font-mono select-all mt-0.5">${escapeHtml(installCmd)}</div>
           </div>
         </div>
-        <button onclick="copyToClipboard('${escapeHtml(installCmd)}', this, 'Copied Bash Command!')" class="shrink-0 text-xs font-medium px-3.5 py-2 bg-[#121218] hover:bg-[#1c1c24] text-cyan-300 hover:text-white rounded-xl border border-cyan-500/30 transition-all flex items-center gap-2">
+        <button onclick="copyToClipboard('${escapeHtml(installCmd)}', this, 'Copied Bash Command!')" class="shrink-0 text-xs font-medium px-3.5 py-2 bg-[#121218] hover:bg-[#1c1c24] text-white rounded-xl border border-white/20 transition-all flex items-center gap-2">
           <i data-lucide="copy" class="w-3.5 h-3.5"></i> Copy Installer
         </button>
       </div>
@@ -2155,7 +3755,7 @@ async function renderS3ClusterTab(container) {
           <div class="text-sm font-bold text-white mb-1">AWS S3 Compatible</div>
           <p class="text-[11px] text-neutral-400 mb-3">PutObject, GetObject, ListObjectsV2, Range Requests, Cyberduck & Boto3.</p>
           <div class="p-2 rounded-lg bg-[#040406] border border-[#171720] flex items-center justify-between gap-2">
-            <span class="font-mono text-[10px] text-cyan-300 truncate">${s3Endpoint}</span>
+            <span class="font-mono text-[10px] text-white truncate">${s3Endpoint}</span>
             <button onclick="copyToClipboard('${s3Endpoint}', this, 'Copied S3 Endpoint!')" class="text-neutral-400 hover:text-white p-1" title="Copy S3 Endpoint">
               <i data-lucide="copy" class="w-3.5 h-3.5"></i>
             </button>
@@ -2166,14 +3766,14 @@ async function renderS3ClusterTab(container) {
         <div class="pitch-card pitch-card-hover p-5 rounded-2xl border border-[#1b1b22]">
           <div class="flex items-center justify-between mb-3">
             <span class="text-xs font-semibold text-neutral-400 uppercase tracking-wider">Vercel Blob API</span>
-            <span class="flex items-center gap-1 text-[10px] text-cyan-400 font-bold">
-              <span class="w-2 h-2 rounded-full bg-cyan-400"></span> Ready
+            <span class="flex items-center gap-1 text-[10px] text-emerald-400 font-bold">
+              <span class="w-2 h-2 rounded-full bg-emerald-400"></span> Ready
             </span>
           </div>
           <div class="text-sm font-bold text-white mb-1">Blob SDK Ready</div>
           <p class="text-[11px] text-neutral-400 mb-3">Drop-in substitute for @vercel/blob. Streaming uploads, instant public/token access.</p>
           <div class="p-2 rounded-lg bg-[#040406] border border-[#171720] flex items-center justify-between gap-2">
-            <span class="font-mono text-[10px] text-cyan-300 truncate">${blobEndpoint}</span>
+            <span class="font-mono text-[10px] text-white truncate">${blobEndpoint}</span>
             <button onclick="copyToClipboard('${blobEndpoint}', this, 'Copied Blob Endpoint!')" class="text-neutral-400 hover:text-white p-1" title="Copy Blob Endpoint">
               <i data-lucide="copy" class="w-3.5 h-3.5"></i>
             </button>
@@ -2184,11 +3784,11 @@ async function renderS3ClusterTab(container) {
         <div class="pitch-card pitch-card-hover p-5 rounded-2xl border border-[#1b1b22]">
           <div class="flex items-center justify-between mb-3">
             <span class="text-xs font-semibold text-neutral-400 uppercase tracking-wider">Cluster Storage</span>
-            <i data-lucide="database" class="w-4 h-4 text-sky-400"></i>
+            <i data-lucide="database" class="w-4 h-4 text-white"></i>
           </div>
           <div class="text-xl font-bold text-white mb-1" id="cluster-storage-stat">Loading...</div>
           <div class="w-full bg-[#16161e] h-1.5 rounded-full overflow-hidden mb-2">
-            <div id="cluster-storage-bar" class="bg-gradient-to-r from-sky-500 to-cyan-400 h-full rounded-full transition-all" style="width: 0%"></div>
+            <div id="cluster-storage-bar" class="bg-white h-full rounded-full transition-all" style="width: 0%"></div>
           </div>
           <p class="text-[10px] text-neutral-500" id="cluster-quota-detail">Shared with your account quota</p>
         </div>
@@ -2209,12 +3809,12 @@ async function renderS3ClusterTab(container) {
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
           <div>
             <h3 class="text-base font-bold text-white flex items-center gap-2">
-              <i data-lucide="shield-check" class="w-4 h-4 text-cyan-400"></i> API Access Keys
+              <i data-lucide="shield-check" class="w-4 h-4 text-white"></i> API Access Keys
             </h3>
             <p class="text-xs text-neutral-400 mt-0.5">Authenticate requests using Bearer tokens, x-api-key, or AWS S3 Signature credentials.</p>
           </div>
           <button onclick="openCreateApiKeyModal()" class="bg-[#121218] hover:bg-[#1a1a24] text-white text-xs font-semibold px-4 py-2.5 rounded-xl border border-[#242432] flex items-center gap-2 transition-all">
-            <i data-lucide="plus" class="w-3.5 h-3.5 text-cyan-400"></i> New API Key
+            <i data-lucide="plus" class="w-3.5 h-3.5 text-white"></i> New API Key
           </button>
         </div>
 
@@ -2233,7 +3833,7 @@ async function renderS3ClusterTab(container) {
             <p class="text-xs text-neutral-400 mt-0.5">Test real upload and retrieval requests against your cluster right now.</p>
           </div>
           <div class="flex items-center gap-1 p-1 bg-[#050508] border border-[#1b1b24] rounded-xl">
-            <button onclick="switchPlaygroundMode('blob')" id="btn-pg-blob" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-cyan-600 text-white transition-all">
+            <button onclick="switchPlaygroundMode('blob')" id="btn-pg-blob" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white text-black transition-all">
               Vercel Blob PUT
             </button>
             <button onclick="switchPlaygroundMode('s3')" id="btn-pg-s3" class="px-3 py-1.5 text-xs font-semibold rounded-lg text-neutral-400 hover:text-white transition-all">
@@ -2257,7 +3857,7 @@ async function renderS3ClusterTab(container) {
 
             <div class="flex flex-wrap items-center gap-3">
               <label class="px-3 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-750 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-medium rounded-xl cursor-pointer flex items-center gap-2 transition-all">
-                <i data-lucide="file-up" class="w-3.5 h-3.5 text-sky-500 dark:text-sky-400"></i> Choose Local File (Optional)
+                <i data-lucide="file-up" class="w-3.5 h-3.5 text-white"></i> Choose Local File (Optional)
                 <input type="file" id="pg-local-file" class="hidden" onchange="handlePlaygroundFileSelect(event)">
               </label>
               <span id="pg-file-name-preview" class="text-xs text-slate-500 dark:text-slate-400 truncate max-w-[220px]">No file chosen (using text payload)</span>
@@ -2275,7 +3875,7 @@ async function renderS3ClusterTab(container) {
                 <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Live Response Payload</span>
                 <span id="pg-res-status" class="text-xs font-mono font-bold text-slate-400">Ready</span>
               </div>
-              <pre id="pg-res-json" class="text-[11px] font-mono text-cyan-300 bg-slate-950 p-3 rounded-lg border border-slate-800 overflow-x-auto max-h-[200px] custom-scrollbar">// Click "Execute API Upload Request" to test live endpoint...</pre>
+              <pre id="pg-res-json" class="text-[11px] font-mono text-white bg-slate-950 p-3 rounded-lg border border-slate-800 overflow-x-auto max-h-[200px] custom-scrollbar">// Click "Execute API Upload Request" to test live endpoint...</pre>
             </div>
 
             <div id="pg-preview-action" class="mt-3 pt-3 border-t border-slate-800 hidden space-y-2">
@@ -2283,19 +3883,19 @@ async function renderS3ClusterTab(container) {
                 <span class="text-xs font-semibold text-emerald-400 flex items-center gap-1.5">
                   <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> Direct Embed Link Ready
                 </span>
-                <a id="pg-preview-link" href="#" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 px-2.5 py-1 bg-sky-600/20 hover:bg-sky-600 text-sky-300 hover:text-white rounded-lg text-[11px] font-semibold transition-all">
+                <a id="pg-preview-link" href="#" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-neutral-200 text-black rounded-lg text-[11px] font-bold transition-all">
                   <i data-lucide="external-link" class="w-3 h-3"></i> View Inline
                 </a>
               </div>
               
               <div class="grid grid-cols-2 sm:grid-cols-3 gap-1.5 pt-1">
-                <button id="btn-copy-direct-url" onclick="" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-medium rounded-lg flex items-center justify-center gap-1.5 transition-all">
-                  <i data-lucide="link" class="w-3 h-3 text-cyan-400"></i> Direct URL
+                <button id="btn-copy-direct-url" onclick="" class="px-2.5 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-white text-[11px] font-medium rounded-lg flex items-center justify-center gap-1.5 border border-white/10 transition-all">
+                  <i data-lucide="link" class="w-3 h-3 text-white"></i> Direct URL
                 </button>
-                <button id="btn-copy-html-tag" onclick="" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-medium rounded-lg flex items-center justify-center gap-1.5 transition-all">
+                <button id="btn-copy-html-tag" onclick="" class="px-2.5 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-white text-[11px] font-medium rounded-lg flex items-center justify-center gap-1.5 border border-white/10 transition-all">
                   <i data-lucide="code" class="w-3 h-3 text-emerald-400"></i> HTML &lt;img&gt;
                 </button>
-                <button id="btn-copy-markdown-tag" onclick="" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-medium rounded-lg flex items-center justify-center gap-1.5 transition-all col-span-2 sm:col-span-1">
+                <button id="btn-copy-markdown-tag" onclick="" class="px-2.5 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-white text-[11px] font-medium rounded-lg flex items-center justify-center gap-1.5 border border-white/10 transition-all col-span-2 sm:col-span-1">
                   <i data-lucide="file-text" class="w-3 h-3 text-amber-400"></i> Markdown
                 </button>
               </div>
@@ -2309,12 +3909,12 @@ async function renderS3ClusterTab(container) {
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
           <div>
             <h3 class="text-base font-bold text-white flex items-center gap-2">
-              <i data-lucide="code-2" class="w-4 h-4 text-sky-400"></i> Integration Code Examples
+              <i data-lucide="code-2" class="w-4 h-4 text-white"></i> Integration Code Examples
             </h3>
             <p class="text-xs text-neutral-400 mt-0.5">Copy production-ready code for your stack.</p>
           </div>
           <div class="flex flex-wrap gap-1 p-1 bg-[#050508] border border-[#1a1a24] rounded-xl">
-            <button onclick="switchCodeSnippetTab('curl')" id="tab-code-curl" class="px-3 py-1 text-xs font-semibold rounded-lg bg-sky-600 text-white transition-all">cURL</button>
+            <button onclick="switchCodeSnippetTab('curl')" id="tab-code-curl" class="px-3 py-1 text-xs font-semibold rounded-lg bg-white text-black transition-all">cURL</button>
             <button onclick="switchCodeSnippetTab('blob-js')" id="tab-code-blob-js" class="px-3 py-1 text-xs font-semibold rounded-lg text-neutral-400 hover:text-white transition-all">Vercel Blob (JS)</button>
             <button onclick="switchCodeSnippetTab('s3-python')" id="tab-code-s3-python" class="px-3 py-1 text-xs font-semibold rounded-lg text-neutral-400 hover:text-white transition-all">Python (Boto3)</button>
             <button onclick="switchCodeSnippetTab('s3-node')" id="tab-code-s3-node" class="px-3 py-1 text-xs font-semibold rounded-lg text-neutral-400 hover:text-white transition-all">AWS SDK v3 (Node)</button>
@@ -2368,7 +3968,7 @@ async function loadS3ClusterData() {
           </div>
           <h4 class="text-sm font-semibold text-white">No API Keys Generated Yet</h4>
           <p class="text-xs text-neutral-400 max-w-sm mx-auto mt-1 mb-4">Create your first API key to connect your applications, upload files via curl, or mount S3 storage.</p>
-          <button onclick="openCreateApiKeyModal()" class="bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold px-4 py-2 rounded-xl transition-all">
+          <button onclick="openCreateApiKeyModal()" class="bg-white hover:bg-neutral-200 text-black text-xs font-bold px-4 py-2 rounded-xl transition-all shadow-lg">
             Create API Key
           </button>
         </div>
@@ -2394,9 +3994,9 @@ async function loadS3ClusterData() {
           ${keys.map(k => `
             <tr class="hover:bg-[#07070a] transition-colors">
               <td class="py-3 px-3 font-semibold text-white flex items-center gap-2">
-                <i data-lucide="key" class="w-3.5 h-3.5 text-cyan-400"></i> ${escapeHtml(k.name)}
+                <i data-lucide="key" class="w-3.5 h-3.5 text-white"></i> ${escapeHtml(k.name)}
               </td>
-              <td class="py-3 px-3 font-mono text-cyan-300">
+              <td class="py-3 px-3 font-mono text-white">
                 <span class="bg-[#030305] px-2 py-1 rounded border border-[#171722] inline-flex items-center gap-1.5">
                   ${escapeHtml(k.key_id)}
                   <button onclick="copyToClipboard('${escapeHtml(k.key_id)}', this, 'Key ID copied!')" class="text-neutral-400 hover:text-white">
@@ -2405,7 +4005,7 @@ async function loadS3ClusterData() {
                 </span>
               </td>
               <td class="py-3 px-3">
-                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${k.permissions === 'full' ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30' : k.permissions === 'read_write' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'bg-neutral-800 text-neutral-300 border border-neutral-700'}">
+                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${k.permissions === 'full' ? 'bg-white/15 text-white border border-white/25' : k.permissions === 'read_write' ? 'bg-white/10 text-white border border-white/20' : 'bg-neutral-800 text-neutral-300 border border-neutral-700'}">
                   ${escapeHtml(k.permissions)}
                 </span>
               </td>
@@ -2441,7 +4041,7 @@ function openCreateApiKeyModal() {
     <div class="pitch-card w-full max-w-md p-6 rounded-2xl border border-[#22222e] shadow-2xl modal-box-enter">
       <div class="flex items-center justify-between mb-4">
         <h3 class="text-base font-bold text-white flex items-center gap-2">
-          <i data-lucide="key" class="w-4 h-4 text-cyan-400"></i> Create New API Key
+          <i data-lucide="key" class="w-4 h-4 text-white"></i> Create New API Key
         </h3>
         <button onclick="closeActiveModal()" class="text-neutral-400 hover:text-white p-1 rounded-lg">
           <i data-lucide="x" class="w-4 h-4"></i>
@@ -2463,7 +4063,7 @@ function openCreateApiKeyModal() {
           </select>
         </div>
 
-        <div class="p-3 rounded-xl bg-cyan-950/30 border border-cyan-500/20 text-xs text-cyan-300">
+        <div class="p-3 rounded-xl bg-neutral-900 border border-white/15 text-xs text-neutral-200">
           This key grants programmatic access to upload and manage files in your S3 & Blob storage cluster.
         </div>
 
@@ -2471,7 +4071,7 @@ function openCreateApiKeyModal() {
           <button type="button" onclick="closeActiveModal()" class="px-4 py-2 rounded-xl text-xs text-neutral-400 hover:text-white hover:bg-[#14141c]">
             Cancel
           </button>
-          <button type="submit" id="submit-create-key" class="px-5 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs shadow-lg shadow-sky-600/30">
+          <button type="submit" id="submit-create-key" class="px-5 py-2 rounded-xl bg-white hover:bg-neutral-200 text-black font-bold text-xs shadow-lg">
             Generate Key
           </button>
         </div>
@@ -2539,7 +4139,7 @@ function showNewApiKeyRevealedModal(key) {
         <div>
           <label class="block text-[11px] font-semibold uppercase text-neutral-400 mb-1">Access Key ID</label>
           <div class="p-2.5 rounded-xl bg-[#040406] border border-[#1c1c26] flex items-center justify-between gap-2">
-            <span class="font-mono text-xs text-cyan-300 select-all">${escapeHtml(key.key_id)}</span>
+            <span class="font-mono text-xs text-white select-all">${escapeHtml(key.key_id)}</span>
             <button onclick="copyToClipboard('${escapeHtml(key.key_id)}', this, 'Copied Key ID!')" class="px-2 py-1 bg-[#121218] hover:bg-[#1a1a24] text-xs text-neutral-300 rounded border border-[#22222e] flex items-center gap-1">
               <i data-lucide="copy" class="w-3 h-3"></i> Copy
             </button>
@@ -2623,12 +4223,12 @@ function switchPlaygroundMode(mode) {
   const fnInput = document.getElementById('pg-filename');
 
   if (mode === 'blob') {
-    btnBlob.className = 'px-3 py-1.5 text-xs font-semibold rounded-lg bg-cyan-600 text-white transition-all';
+    btnBlob.className = 'px-3 py-1.5 text-xs font-semibold rounded-lg bg-white text-black transition-all';
     btnS3.className = 'px-3 py-1.5 text-xs font-semibold rounded-lg text-neutral-400 hover:text-white transition-all';
     pathLabel.innerText = 'Destination Path (Vercel Blob /pathname)';
     if (fnInput.value.includes('bucket')) fnInput.value = 'test-uploads/hello-zen.txt';
   } else {
-    btnS3.className = 'px-3 py-1.5 text-xs font-semibold rounded-lg bg-cyan-600 text-white transition-all';
+    btnS3.className = 'px-3 py-1.5 text-xs font-semibold rounded-lg bg-white text-black transition-all';
     btnBlob.className = 'px-3 py-1.5 text-xs font-semibold rounded-lg text-neutral-400 hover:text-white transition-all';
     pathLabel.innerText = 'S3 Bucket & Object Key (bucket/key)';
     if (!fnInput.value.includes('/')) fnInput.value = 'default/test-uploads/hello-zen.txt';
@@ -2769,7 +4369,7 @@ function switchCodeSnippetTab(tab) {
     const el = document.getElementById(`tab-code-${t}`);
     if (el) {
       if (t === tab) {
-        el.className = 'px-3 py-1 text-xs font-semibold rounded-lg bg-sky-600 text-white transition-all';
+        el.className = 'px-3 py-1 text-xs font-semibold rounded-lg bg-white text-black transition-all';
       } else {
         el.className = 'px-3 py-1 text-xs font-semibold rounded-lg text-neutral-400 hover:text-white transition-all';
       }
@@ -2944,14 +4544,14 @@ async function renderShareLinksTab(container) {
               ${escapeHtml(l.file_path)}
             </div>
             <span class="w-36 font-medium text-slate-600 dark:text-slate-400">${l.expires_at ? new Date(l.expires_at).toLocaleString() : 'Never'}</span>
-            <span class="w-24 text-center font-bold text-sky-600 dark:text-sky-400">${l.view_count}</span>
+            <span class="w-24 text-center font-bold text-slate-900 dark:text-white">${l.view_count}</span>
             <span class="w-24 text-center">
               <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${l.is_active && !l.isExpired ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' : 'bg-red-500/20 text-red-600 dark:text-red-400'}">
                 ${l.is_active && !l.isExpired ? 'Active' : 'Expired'}
               </span>
             </span>
             <div class="w-28 text-right flex items-center justify-end gap-2">
-              <button onclick="navigator.clipboard.writeText('${l.shareUrl}'); showToast('Share URL copied!', 'success');" class="p-1.5 text-slate-500 dark:text-slate-400 hover:text-sky-600 dark:hover:text-sky-400 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800" title="Copy Link">
+              <button onclick="navigator.clipboard.writeText('${l.shareUrl}'); showToast('Share URL copied!', 'success');" class="p-1.5 text-slate-500 dark:text-slate-400 hover:text-white rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800" title="Copy Link">
                 <i data-lucide="copy" class="w-4 h-4"></i>
               </button>
               <button onclick="revokeShareLink('${l.id}')" class="p-1.5 text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800" title="Revoke Link">
@@ -2989,93 +4589,94 @@ async function renderDashboardTab(container) {
     <div class="space-y-6 tab-pane-enter">
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <!-- Storage Quota -->
-        <div class="pitch-card pitch-card-hover p-5 rounded-2xl border border-slate-200 dark:border-[#1b1b22]">
-          <div class="flex items-center justify-between mb-3">
-            <span class="text-xs font-semibold text-slate-500 dark:text-neutral-400 uppercase tracking-wider">Storage Quota</span>
-            <i data-lucide="pie-chart" class="w-4 h-4 text-sky-600 dark:text-sky-400"></i>
+        <div class="pitch-card p-5 rounded-2xl border border-slate-200 dark:border-white/10">
+          <div class="flex items-center justify-between mb-3 text-slate-500 dark:text-slate-400 text-xs font-medium">
+            <span>Storage Used</span>
+            <i data-lucide="hard-drive" class="w-4 h-4"></i>
           </div>
-          <div class="text-lg font-bold text-slate-900 dark:text-white mb-2" id="dash-storage-text">Loading...</div>
-          <div class="w-full bg-slate-100 dark:bg-[#16161c] h-2 rounded-full overflow-hidden">
-            <div id="dash-storage-bar" class="bg-gradient-to-r from-sky-500 to-cyan-400 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+          <div class="text-xl font-bold text-slate-900 dark:text-white mb-3" id="dash-storage-text">Loading...</div>
+          <div class="w-full bg-slate-100 dark:bg-neutral-800 h-1.5 rounded-full overflow-hidden">
+            <div id="dash-storage-bar" class="bg-slate-900 dark:bg-white h-full rounded-full transition-all duration-300" style="width: 0%"></div>
           </div>
         </div>
 
         <!-- Monthly Bandwidth (15 GB Default) -->
-        <div class="pitch-card pitch-card-hover p-5 rounded-2xl border border-slate-200 dark:border-[#1b1b22]">
-          <div class="flex items-center justify-between mb-3">
-            <span class="text-xs font-semibold text-slate-500 dark:text-neutral-400 uppercase tracking-wider">Monthly Bandwidth</span>
-            <i data-lucide="activity" class="w-4 h-4 text-indigo-500"></i>
+        <div class="pitch-card p-5 rounded-2xl border border-slate-200 dark:border-white/10">
+          <div class="flex items-center justify-between mb-3 text-slate-500 dark:text-slate-400 text-xs font-medium">
+            <span>Monthly Bandwidth</span>
+            <i data-lucide="activity" class="w-4 h-4"></i>
           </div>
-          <div class="text-lg font-bold text-slate-900 dark:text-white mb-2" id="dash-bandwidth-text">0 / 15 GB</div>
-          <div class="w-full bg-slate-100 dark:bg-[#16161c] h-2 rounded-full overflow-hidden mb-1.5">
-            <div id="dash-bandwidth-bar" class="bg-gradient-to-r from-indigo-500 to-purple-500 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+          <div class="text-xl font-bold text-slate-900 dark:text-white mb-3" id="dash-bandwidth-text">0 / 15 GB</div>
+          <div class="w-full bg-slate-100 dark:bg-neutral-800 h-1.5 rounded-full overflow-hidden mb-2">
+            <div id="dash-bandwidth-bar" class="bg-slate-900 dark:bg-white h-full rounded-full transition-all duration-300" style="width: 0%"></div>
           </div>
-          <div class="flex items-center justify-between text-[11px] text-slate-500 dark:text-neutral-400" id="dash-bandwidth-sub">
-            <span>Auto-resets monthly</span>
+          <div class="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400" id="dash-bandwidth-sub">
+            <span>Bandwidth quota</span>
             <span id="dash-bandwidth-reset">30d left</span>
           </div>
         </div>
 
         <!-- Monthly API Requests (100k Default) -->
-        <div class="pitch-card pitch-card-hover p-5 rounded-2xl border border-slate-200 dark:border-[#1b1b22]">
-          <div class="flex items-center justify-between mb-3">
-            <span class="text-xs font-semibold text-slate-500 dark:text-neutral-400 uppercase tracking-wider">Monthly API Calls</span>
-            <i data-lucide="zap" class="w-4 h-4 text-amber-500"></i>
+        <div class="pitch-card p-5 rounded-2xl border border-slate-200 dark:border-white/10">
+          <div class="flex items-center justify-between mb-3 text-slate-500 dark:text-slate-400 text-xs font-medium">
+            <span>Monthly API Calls</span>
+            <i data-lucide="zap" class="w-4 h-4"></i>
           </div>
-          <div class="text-lg font-bold text-slate-900 dark:text-white mb-2" id="dash-api-text">0 / 100k Req</div>
-          <div class="w-full bg-slate-100 dark:bg-[#16161c] h-2 rounded-full overflow-hidden mb-1.5">
-            <div id="dash-api-bar" class="bg-gradient-to-r from-amber-500 to-yellow-400 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+          <div class="text-xl font-bold text-slate-900 dark:text-white mb-3" id="dash-api-text">0 / 100k Req</div>
+          <div class="w-full bg-slate-100 dark:bg-neutral-800 h-1.5 rounded-full overflow-hidden mb-2">
+            <div id="dash-api-bar" class="bg-amber-500 dark:bg-amber-400 h-full rounded-full transition-all duration-300" style="width: 0%"></div>
           </div>
-          <div class="flex items-center justify-between text-[11px] text-slate-500 dark:text-neutral-400" id="dash-api-sub">
-            <span>S3 & Blob Requests</span>
+          <div class="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400" id="dash-api-sub">
+            <span>S3 & Blob API</span>
             <span id="dash-api-percent">0%</span>
           </div>
         </div>
 
         <!-- Direct Embed Links & S3 Cluster -->
-        <div onclick="navigateTab('s3cluster')" class="pitch-card pitch-card-hover p-5 rounded-2xl border border-slate-200 dark:border-[#1b1b22] cursor-pointer group">
-          <div class="flex items-center justify-between mb-3">
-            <span class="text-xs font-semibold text-slate-500 dark:text-neutral-400 uppercase tracking-wider">Embeds & S3 API</span>
-            <i data-lucide="cloud-lightning" class="w-4 h-4 text-cyan-600 dark:text-cyan-400 group-hover:scale-110 transition-transform"></i>
+        <div onclick="navigateTab('s3cluster')" class="pitch-card p-5 rounded-2xl border border-slate-200 dark:border-white/10 cursor-pointer hover:border-slate-400 dark:hover:border-white/30 transition-all group">
+          <div class="flex items-center justify-between mb-3 text-slate-500 dark:text-slate-400 text-xs font-medium">
+            <span>S3 / Blob Storage API</span>
+            <i data-lucide="database" class="w-4 h-4 group-hover:text-black dark:group-hover:text-white transition-colors"></i>
           </div>
-          <div class="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-            Embed Ready <span class="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-600 dark:text-cyan-300 font-semibold">Active</span>
+          <div class="text-xl font-bold text-slate-900 dark:text-white mb-3 flex items-center justify-between">
+            <span>Connected</span>
+            <span class="text-xs font-semibold text-emerald-600 dark:text-emerald-400">Live</span>
           </div>
-          <p class="text-xs text-slate-500 dark:text-neutral-400 mt-2 flex items-center justify-between">
+          <div class="text-xs text-slate-500 dark:text-slate-400 flex items-center justify-between pt-1">
             <span>Direct CDN links</span>
-            <span class="text-cyan-600 dark:text-cyan-400 font-semibold flex items-center gap-1">Open <i data-lucide="arrow-right" class="w-3 h-3"></i></span>
-          </p>
+            <span class="text-slate-900 dark:text-white font-medium flex items-center gap-1">Manage <i data-lucide="arrow-right" class="w-3 h-3"></i></span>
+          </div>
         </div>
       </div>
 
       <!-- Secondary Info Row -->
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div class="pitch-card p-6 rounded-2xl border border-slate-200 dark:border-[#1b1b22]">
-          <h3 class="text-sm font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-            <i data-lucide="clock" class="w-4 h-4 text-sky-600 dark:text-sky-400"></i> Recent Login Activity
+        <div class="pitch-card p-6 rounded-2xl border border-slate-200 dark:border-white/10">
+          <h3 class="text-sm font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+            <i data-lucide="clock" class="w-4 h-4 text-slate-400"></i> Recent Login Activity
           </h3>
-          <div id="dash-recent-logins" class="text-xs text-slate-600 dark:text-neutral-400">Loading recent logins...</div>
+          <div id="dash-recent-logins" class="text-xs text-slate-600 dark:text-slate-400">Loading recent logins...</div>
         </div>
 
-        <div class="pitch-card p-6 rounded-2xl border border-slate-200 dark:border-[#1b1b22] space-y-3">
+        <div class="pitch-card p-6 rounded-2xl border border-slate-200 dark:border-white/10 space-y-3">
           <div class="flex items-center justify-between">
-            <h3 class="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <h3 class="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
               <i data-lucide="shield-check" class="w-4 h-4 text-emerald-500"></i> Active Security & Quotas
             </h3>
-            <span class="text-xs font-mono px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300" id="dash-ip-badge">Detecting IP...</span>
+            <span class="text-xs font-mono text-slate-500 dark:text-slate-400" id="dash-ip-badge">Detecting IP...</span>
           </div>
           <div class="text-xs text-slate-600 dark:text-slate-400 space-y-2 pt-1">
-            <div class="flex items-center justify-between py-1 border-b border-slate-100 dark:border-slate-800/60">
+            <div class="flex items-center justify-between py-1.5 border-b border-slate-100 dark:border-white/5">
               <span>Bandwidth Policy</span>
-              <span class="font-semibold text-slate-900 dark:text-white">15 GB / month (Auto-reset)</span>
+              <span class="font-medium text-slate-900 dark:text-white">15 GB / month</span>
             </div>
-            <div class="flex items-center justify-between py-1 border-b border-slate-100 dark:border-slate-800/60">
+            <div class="flex items-center justify-between py-1.5 border-b border-slate-100 dark:border-white/5">
               <span>API Request Policy</span>
-              <span class="font-semibold text-slate-900 dark:text-white">100,000 / month (Auto-reset)</span>
+              <span class="font-medium text-slate-900 dark:text-white">100,000 / month</span>
             </div>
-            <div class="flex items-center justify-between py-1">
-              <span>Embed Direct URLs</span>
-              <span class="font-semibold text-emerald-500">Universal Direct Stream</span>
+            <div class="flex items-center justify-between py-1.5">
+              <span>Direct File CDN Access</span>
+              <span class="font-medium text-emerald-600 dark:text-emerald-400">Enabled</span>
             </div>
           </div>
         </div>
@@ -3147,7 +4748,7 @@ async function renderDashboardTab(container) {
         cards.push(`<div class="glass-card p-5 rounded-2xl border border-indigo-500/20 bg-indigo-500/5 flex items-center justify-between gap-4"><div class="flex items-center gap-3"><div class="w-11 h-11 rounded-xl bg-indigo-500/15 flex items-center justify-center text-indigo-300"><i data-lucide="message-circle" class="w-5 h-5"></i></div><div><div class="text-sm font-bold text-white">Discord Community</div><div class="text-xs text-slate-400 mt-1">Join our Discord server.</div></div></div><a href="${escapeHtml(publicSettings.discordJoinUrl)}" target="_blank" rel="noopener noreferrer" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-4 py-2 rounded-lg">Join</a></div>`);
       }
       if (publicSettings.contactEmailEnabled && publicSettings.contactEmail) {
-        cards.push(`<div class="glass-card p-5 rounded-2xl border border-sky-500/20 bg-sky-500/5 flex items-center justify-between gap-4"><div class="flex items-center gap-3"><div class="w-11 h-11 rounded-xl bg-sky-500/15 flex items-center justify-center text-sky-300"><i data-lucide="mail" class="w-5 h-5"></i></div><div><div class="text-sm font-bold text-white">Contact</div><div class="text-xs text-slate-400 mt-1">${escapeHtml(publicSettings.contactEmail)}</div></div></div><a href="mailto:${escapeHtml(publicSettings.contactEmail)}" class="bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold px-4 py-2 rounded-lg">Email</a></div>`);
+        cards.push(`<div class="glass-card p-5 rounded-2xl border border-white/20 bg-white/5 flex items-center justify-between gap-4"><div class="flex items-center gap-3"><div class="w-11 h-11 rounded-xl bg-white/10 flex items-center justify-center text-white"><i data-lucide="mail" class="w-5 h-5"></i></div><div><div class="text-sm font-bold text-white">Contact</div><div class="text-xs text-slate-400 mt-1">${escapeHtml(publicSettings.contactEmail)}</div></div></div><a href="mailto:${escapeHtml(publicSettings.contactEmail)}" class="bg-white hover:bg-neutral-200 text-black text-xs font-bold px-4 py-2 rounded-lg transition-all">Email</a></div>`);
       }
       details.innerHTML = cards.join('');
       if (window.lucide) lucide.createIcons();
@@ -3172,93 +4773,113 @@ async function renderProfileTab(container) {
 
   container.innerHTML = `
     <div class="max-w-2xl mx-auto space-y-6">
-      <!-- Monthly Usage & Limits Card -->
-      <div class="glass-card p-6 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
-        <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
-          <div>
-            <h3 class="text-base font-bold text-slate-900 dark:text-white">Monthly Bandwidth & API Quota</h3>
-            <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Limits automatically reset on a 30-day rolling monthly cycle.</p>
+      <!-- User Identity Card -->
+      <div class="glass-card p-6 rounded-2xl border border-slate-200 dark:border-white/10 flex flex-col sm:flex-row items-center sm:items-start gap-4">
+        <div class="zencloud-avatar-badge w-14 h-14 rounded-xl text-xl uppercase shrink-0">
+          ${AppState.user.username.substring(0, 2)}
+        </div>
+        <div class="flex-1 text-center sm:text-left min-w-0">
+          <div class="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+            <h2 class="text-lg font-bold text-slate-900 dark:text-white tracking-tight">${escapeHtml(AppState.user.name || AppState.user.username)}</h2>
+            <span class="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider rounded bg-slate-100 text-slate-700 dark:bg-white/10 dark:text-white">
+              ${AppState.user.role}
+            </span>
           </div>
-          <span class="px-2.5 py-1 text-xs font-semibold rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20">
-            Cycle reset in ${resetDays}
+          <p class="text-xs text-slate-500 font-mono mt-0.5">${escapeHtml(AppState.user.email || AppState.user.username)}</p>
+          <div class="flex flex-wrap items-center justify-center sm:justify-start gap-3 mt-3 text-xs text-slate-500 dark:text-slate-400">
+            <div class="flex items-center gap-1.5"><i data-lucide="shield-check" class="w-4 h-4 text-emerald-500"></i> Active Account</div>
+            <div class="flex items-center gap-1.5"><i data-lucide="hard-drive" class="w-4 h-4 text-slate-400"></i> SFTP & S3 Storage</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Monthly Usage & Limits Card -->
+      <div class="glass-card p-6 rounded-2xl border border-slate-200 dark:border-white/10 space-y-4">
+        <div class="flex items-center justify-between border-b border-slate-100 dark:border-white/5 pb-3">
+          <div>
+            <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Monthly Bandwidth & API Quota</h3>
+            <p class="text-xs text-slate-500 mt-0.5">Rolling monthly cycle.</p>
+          </div>
+          <span class="text-xs text-slate-500 font-mono">
+            Reset in ${resetDays}
           </span>
         </div>
 
         <div class="grid sm:grid-cols-2 gap-4 pt-1">
-          <div class="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 space-y-2">
-            <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-              <span class="font-semibold text-slate-700 dark:text-slate-300">Monthly Bandwidth</span>
+          <div class="p-4 rounded-xl bg-slate-50 dark:bg-neutral-900/60 border border-slate-100 dark:border-white/5 space-y-2">
+            <div class="flex items-center justify-between text-xs text-slate-500">
+              <span class="font-medium text-slate-700 dark:text-slate-300">Bandwidth</span>
               <span>${bwPct}%</span>
             </div>
-            <div class="text-base font-bold text-slate-900 dark:text-white">${bwUsed} <span class="text-xs font-normal text-slate-500">/ ${bwLimit}</span></div>
-            <div class="w-full bg-slate-200 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
-              <div class="bg-gradient-to-r from-indigo-500 to-purple-500 h-full rounded-full" style="width: ${Math.min(100, bwPct)}%"></div>
+            <div class="text-sm font-bold text-slate-900 dark:text-white">${bwUsed} <span class="text-xs font-normal text-slate-400">/ ${bwLimit}</span></div>
+            <div class="w-full bg-slate-200 dark:bg-neutral-800 h-1.5 rounded-full overflow-hidden">
+              <div class="bg-slate-900 dark:bg-white h-full rounded-full transition-all duration-300" style="width: ${Math.min(100, bwPct)}%"></div>
             </div>
           </div>
 
-          <div class="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 space-y-2">
-            <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-              <span class="font-semibold text-slate-700 dark:text-slate-300">Monthly API Requests</span>
+          <div class="p-4 rounded-xl bg-slate-50 dark:bg-neutral-900/60 border border-slate-100 dark:border-white/5 space-y-2">
+            <div class="flex items-center justify-between text-xs text-slate-500">
+              <span class="font-medium text-slate-700 dark:text-slate-300">API Calls</span>
               <span>${apiPct}%</span>
             </div>
-            <div class="text-base font-bold text-slate-900 dark:text-white">${apiUsed} <span class="text-xs font-normal text-slate-500">/ ${apiLimit}</span></div>
-            <div class="w-full bg-slate-200 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
-              <div class="bg-gradient-to-r from-amber-500 to-yellow-400 h-full rounded-full" style="width: ${Math.min(100, apiPct)}%"></div>
+            <div class="text-sm font-bold text-slate-900 dark:text-white">${apiUsed} <span class="text-xs font-normal text-slate-400">/ ${apiLimit}</span></div>
+            <div class="w-full bg-slate-200 dark:bg-neutral-800 h-1.5 rounded-full overflow-hidden">
+              <div class="bg-amber-500 dark:bg-amber-400 h-full rounded-full transition-all duration-300" style="width: ${Math.min(100, apiPct)}%"></div>
             </div>
           </div>
         </div>
       </div>
 
-      <div class="glass-card p-6 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
-        <h3 class="text-base font-bold text-slate-900 dark:text-white border-b border-slate-200 dark:border-slate-800 pb-3">User Profile Information</h3>
+      <div class="glass-card p-6 rounded-2xl border border-slate-200 dark:border-white/10 space-y-4">
+        <h3 class="text-sm font-semibold text-slate-900 dark:text-white border-b border-slate-100 dark:border-white/5 pb-3">User Profile Information</h3>
         
         <form onsubmit="handleProfileUpdate(event)" class="space-y-4">
           <div>
-            <label class="block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400 mb-1">Full Name</label>
-            <input type="text" id="prof-name" value="${escapeHtml(AppState.user.name)}" class="w-full pitch-input rounded-xl px-4 py-2.5 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-sky-500">
+            <label class="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Full Name</label>
+            <input type="text" id="prof-name" value="${escapeHtml(AppState.user.name)}" class="w-full pitch-input rounded-xl px-4 py-2.5 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-white">
           </div>
 
           <div>
-            <label class="block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400 mb-1">Username</label>
-            <input type="text" id="prof-username" value="${escapeHtml(AppState.user.username)}" class="w-full pitch-input rounded-xl px-4 py-2.5 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-sky-500">
+            <label class="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Username</label>
+            <input type="text" id="prof-username" value="${escapeHtml(AppState.user.username)}" class="w-full pitch-input rounded-xl px-4 py-2.5 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-white">
           </div>
 
-          <div class="pt-4 border-t border-slate-200 dark:border-slate-800">
-            <h4 class="text-xs font-bold uppercase text-sky-600 dark:text-sky-400 mb-3">Change Password (Optional)</h4>
+          <div class="pt-4 border-t border-slate-100 dark:border-white/5">
+            <h4 class="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-3">Change Password (Optional)</h4>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label class="block text-xs text-slate-600 dark:text-slate-400 mb-1">Current Password</label>
+                <label class="block text-xs text-slate-500 mb-1">Current Password</label>
                 <input type="password" id="prof-curr-pass" class="w-full pitch-input rounded-xl px-3 py-2 text-sm text-slate-900 dark:text-white">
               </div>
               <div>
-                <label class="block text-xs text-slate-600 dark:text-slate-400 mb-1">New Password</label>
+                <label class="block text-xs text-slate-500 mb-1">New Password</label>
                 <input type="password" id="prof-new-pass" class="w-full pitch-input rounded-xl px-3 py-2 text-sm text-slate-900 dark:text-white">
               </div>
             </div>
           </div>
 
-          <button type="submit" class="bg-sky-600 hover:bg-sky-500 text-white font-medium text-xs px-5 py-2.5 rounded-lg shadow-lg shadow-sky-600/20">
+          <button type="submit" class="zencloud-btn-primary px-5 py-2.5 rounded-xl text-xs font-semibold shadow-sm">
             Save Profile Changes
           </button>
         </form>
       </div>
 
       <!-- Email Verification System -->
-      <div class="glass-card p-6 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
-        <h3 class="text-sm font-bold text-slate-900 dark:text-white border-b border-slate-200 dark:border-slate-800 pb-3">Email Address Verification</h3>
-        <p class="text-xs text-slate-600 dark:text-slate-400">Current Email: <span class="font-bold text-slate-900 dark:text-white">${escapeHtml(AppState.user.email)}</span></p>
+      <div class="glass-card p-6 rounded-2xl border border-slate-200 dark:border-white/10 space-y-4">
+        <h3 class="text-sm font-semibold text-slate-900 dark:text-white border-b border-slate-100 dark:border-white/5 pb-3">Email Address</h3>
+        <p class="text-xs text-slate-500">Current Email: <span class="font-medium text-slate-900 dark:text-white">${escapeHtml(AppState.user.email)}</span></p>
 
         <form onsubmit="handleEmailChangeRequest(event)" class="space-y-3">
           <div>
-            <label class="block text-xs text-slate-600 dark:text-slate-400 mb-1">New Email Address</label>
+            <label class="block text-xs text-slate-500 mb-1">New Email Address</label>
             <input type="email" id="email-new-input" required class="w-full pitch-input rounded-xl px-4 py-2 text-sm text-slate-900 dark:text-white" placeholder="newemail@example.com">
           </div>
           <div>
-            <label class="block text-xs text-slate-600 dark:text-slate-400 mb-1">Current Password Verification</label>
+            <label class="block text-xs text-slate-500 mb-1">Current Password Verification</label>
             <input type="password" id="email-pass-input" required class="w-full pitch-input rounded-xl px-4 py-2 text-sm text-slate-900 dark:text-white">
           </div>
-          <button type="submit" class="bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs px-4 py-2 rounded-lg">
-            Send Email Verification Link
+          <button type="submit" class="bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs px-4 py-2 rounded-xl transition-all">
+            Send Verification Link
           </button>
         </form>
       </div>
@@ -3410,15 +5031,18 @@ async function renderAdminSubTabContent() {
       area.innerHTML = `
         <div class="space-y-4">
           <div class="flex flex-wrap items-center justify-between gap-3">
-            <div><h3 class="text-sm font-bold text-white">User Management</h3><p class="text-xs text-slate-500 mt-1">Manage user storage, monthly bandwidth (15 GB limit), API calls (100k limit) and accounts.</p></div>
+            <div>
+              <h3 class="text-sm font-bold text-white">User Management</h3>
+              <p class="text-xs text-slate-500 mt-1">Manage user storage, monthly bandwidth (15 GB limit), API calls (100k limit), account verification, and status.</p>
+            </div>
             <button onclick="openCreateUserModal()" class="bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl flex items-center gap-2">
               <i data-lucide="user-plus" class="w-4 h-4"></i> Create New User
             </button>
           </div>
           <div class="glass-card rounded-2xl overflow-hidden border border-slate-800">
-            <div class="admin-table-scroll"><div class="min-w-[1300px]">
+            <div class="admin-table-scroll"><div class="min-w-[1360px]">
               <div class="px-4 py-3 bg-slate-950/60 flex items-center text-xs font-semibold text-slate-400">
-                <span class="w-12">ID</span><span class="flex-1">User</span><span class="w-28">Role</span><span class="w-36">Storage</span><span class="w-36">Monthly Bandwidth</span><span class="w-32">Monthly Requests</span><span class="w-24 text-center">Status</span><span class="w-56 text-right">Actions</span>
+                <span class="w-12">ID</span><span class="flex-1">User</span><span class="w-28">Role</span><span class="w-36">Storage</span><span class="w-36">Monthly Bandwidth</span><span class="w-32">Monthly Requests</span><span class="w-44 text-center">Status</span><span class="w-64 text-right">Actions</span>
               </div>
               <div class="divide-y divide-slate-800/60">
                 ${users.map(u => {
@@ -3426,7 +5050,7 @@ async function renderAdminSubTabContent() {
                   return `
                   <div class="px-4 py-3 flex items-center text-xs">
                     <span class="w-12 text-slate-500">#${u.id}</span>
-                    <div class="flex-1 min-w-0 pr-3"><div class="font-bold text-white truncate">${escapeHtml(u.name)} (${escapeHtml(u.username)}) ${isSelf ? '<span class="text-[10px] text-amber-400">YOU</span>' : ''}</div><div class="text-slate-400 truncate">${escapeHtml(u.email)}</div></div>
+                    <div class="flex-1 min-w-0 pr-3"><div class="font-bold text-white truncate">${escapeHtml(u.name)} (${escapeHtml(u.username)}) ${isSelf ? '<span class="text-[10px] text-amber-400 font-bold ml-1">YOU</span>' : ''}</div><div class="text-slate-400 truncate">${escapeHtml(u.email)}</div></div>
                     <div class="w-28">
                       <select ${isSelf ? 'disabled' : ''} onchange="changeUserRole('${u.id}', this.value)" class="bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-white ${isSelf ? 'opacity-50 cursor-not-allowed' : ''}">
                         <option value="user" ${u.role === 'user' ? 'selected' : ''}>User</option>
@@ -3434,21 +5058,35 @@ async function renderAdminSubTabContent() {
                       </select>
                     </div>
                     <span class="w-36 ${u.isOverQuota ? 'text-red-400 font-bold' : 'text-slate-300'}">${formatBytes(u.realUsedBytes)} / ${formatBytes(u.storage_quota_bytes)}</span>
-                    <span class="w-36 text-indigo-300">${u.bandwidthFormattedUsed} / ${u.bandwidthFormattedLimit}</span>
+                    <span class="w-36 text-slate-300">${u.bandwidthFormattedUsed} / ${u.bandwidthFormattedLimit}</span>
                     <span class="w-32 text-amber-300">${u.apiRequestsFormattedUsed} / ${u.apiRequestsFormattedLimit}</span>
-                    <span class="w-24 text-center">
+                    <span class="w-44 text-center">
                       ${u.is_suspended 
                         ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-500/20 text-red-400 border border-red-500/30 cursor-help" title="${u.suspension_reason ? 'Suspended: ' + escapeHtml(u.suspension_reason) : 'Suspended'}">Suspended</span>` 
-                        : `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Active</span>`
+                        : (u.requires_otp_verification || u.is_suspicious)
+                          ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 inline-flex items-center gap-1 cursor-help" title="Security verification required. OTP code: ${escapeHtml(u.otp_code || 'Sent')} | Reason: ${escapeHtml(u.otp_reason || u.suspicious_reason || 'Security check')}"><i data-lucide="shield-alert" class="w-3 h-3"></i> Verification (${u.otp_code || 'OTP'})</span>`
+                          : `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Active</span>`
                       }
                     </span>
-                    <div class="w-56 text-right flex items-center justify-end gap-1">
-                      <button onclick="inspectUserDirectory('${u.id}', '${escapeHtml(u.username)}')" class="p-1.5 text-slate-400 hover:text-sky-400 rounded-lg" title="Browse / Inspect ${escapeHtml(u.username)}'s Directory"><i data-lucide="folder-open" class="w-4 h-4 text-sky-400"></i></button>
-                      <button onclick="openEditUserModal('${u.id}')" class="p-1.5 text-slate-400 hover:text-sky-400 rounded-lg" title="Edit User & Quotas"><i data-lucide="pencil" class="w-4 h-4"></i></button>
+                    <div class="w-64 text-right flex items-center justify-end gap-1">
+                      <button onclick="inspectUserDirectory('${u.id}', '${escapeHtml(u.username)}')" class="p-1.5 text-slate-400 hover:text-white rounded-lg" title="Browse / Inspect ${escapeHtml(u.username)}'s Directory"><i data-lucide="folder-open" class="w-4 h-4 text-white"></i></button>
+                      <button onclick="openEditUserModal('${u.id}')" class="p-1.5 text-slate-400 hover:text-white rounded-lg" title="Edit User & Quotas"><i data-lucide="pencil" class="w-4 h-4"></i></button>
                       <button onclick="resetUserUsagePrompt('${u.id}', '${escapeHtml(u.username)}')" class="p-1.5 text-slate-400 hover:text-emerald-400 rounded-lg" title="Reset Monthly Bandwidth & API Cycle"><i data-lucide="rotate-ccw" class="w-4 h-4"></i></button>
                       <button onclick="editUserQuotaPrompt('${u.id}', '${u.storage_quota_bytes}')" class="p-1.5 text-slate-400 hover:text-amber-400 rounded-lg" title="Edit Storage Quota"><i data-lucide="hard-drive" class="w-4 h-4"></i></button>
+                      
+                      <!-- OTP Verification Controls -->
+                      ${!isSelf ? (u.requires_otp_verification
+                        ? `
+                          <button onclick="handleLiftVerification('${u.id}', '${escapeHtml(u.username)}')" class="p-1.5 text-emerald-400 hover:bg-emerald-500/20 rounded-lg" title="Lift 4-Digit OTP Verification"><i data-lucide="shield-check" class="w-4 h-4"></i></button>
+                          <button onclick="handleAdminResendOtp('${u.id}', '${escapeHtml(u.username)}')" class="p-1.5 text-amber-400 hover:bg-amber-500/20 rounded-lg" title="Resend 4-Digit OTP Code via Email"><i data-lucide="mail" class="w-4 h-4"></i></button>
+                        `
+                        : `
+                          <button onclick="openPutOnVerificationModal('${u.id}', '${escapeHtml(u.username)}', '${escapeHtml(u.email)}', '${escapeHtml(u.name)}')" class="p-1.5 text-slate-400 hover:text-amber-400 hover:bg-amber-500/10 rounded-lg" title="Put on 4-Digit OTP Security Verification (Suspected)"><i data-lucide="shield-alert" class="w-4 h-4 text-amber-400"></i></button>
+                        `
+                      ) : ''}
+
                       ${!isSelf ? (u.is_suspended 
-                        ? `<button onclick="openUnsuspendUserModal('${u.id}', '${escapeHtml(u.username)}', '${escapeHtml(u.email)}', '${escapeHtml(u.name)}')" class="p-1.5 text-slate-400 hover:text-emerald-400 rounded-lg" title="Unsuspend / Reactivate User"><i data-lucide="check-circle" class="w-4 h-4 text-emerald-400"></i></button>`
+                        ? `<button onclick="openUnsuspendUserModal('${u.id}', '${escapeHtml(u.username)}', '${escapeHtml(u.email)}', '${escapeHtml(u.name)}')" class="p-1.5 text-slate-400 hover:text-emerald-400 rounded-lg" title="Unsuspend / Reactivate User"><i data-lucide="check-circle" class="w-4 h-4 text-emerald-400"></i></button>` 
                         : `<button onclick="openSuspendUserModal('${u.id}', '${escapeHtml(u.username)}', '${escapeHtml(u.email)}', '${escapeHtml(u.name)}')" class="p-1.5 text-slate-400 hover:text-red-400 rounded-lg" title="Suspend User (with Reason & Auto Mail)"><i data-lucide="ban" class="w-4 h-4 text-red-400"></i></button>`
                       ) : ''}
                       ${!isSelf ? `<button onclick="deleteUserPrompt('${u.id}', '${escapeHtml(u.username)}')" class="p-1.5 text-slate-400 hover:text-red-500 rounded-lg" title="Delete User"><i data-lucide="trash-2" class="w-4 h-4"></i></button>` : ''}
@@ -3502,7 +5140,7 @@ async function renderAdminSubTabContent() {
         <div class="glass-card rounded-2xl border border-slate-800 overflow-hidden">
           <div class="px-5 py-4 border-b border-slate-800 flex items-center justify-between gap-3"><div><h3 class="text-sm font-bold text-white">URL Download Monitoring</h3><p class="text-xs text-slate-500 mt-1">Download/share endpoint metadata only; file contents are never stored in logs.</p></div><div class="flex items-center gap-2"><span class="text-xs text-slate-500">${result.total || 0} records</span><button onclick="clearAdminLogs('download-monitor')" class="bg-red-600/15 hover:bg-red-600/25 text-red-300 border border-red-500/20 px-3 py-2 rounded-lg text-xs font-bold">Clear Logs</button></div></div>
           <div class="admin-table-scroll"><table class="min-w-[1500px] w-full text-xs"><thead><tr class="text-left text-slate-500 border-b border-slate-800"><th class="p-3">Time</th><th class="p-3">User</th><th class="p-3">IP</th><th class="p-3">File</th><th class="p-3">Size</th><th class="p-3">Endpoint</th><th class="p-3">Status</th><th class="p-3">HTTP</th><th class="p-3">Completed</th><th class="p-3">Error</th></tr></thead><tbody class="divide-y divide-slate-800/60">
-          ${logs.map(l => `<tr><td class="p-3 text-slate-500 whitespace-nowrap">${new Date(l.started_at).toLocaleString()}</td><td class="p-3 text-slate-200">${escapeHtml(l.username || 'Public')}</td><td class="p-3 font-mono text-sky-300">${escapeHtml(l.ip_address || '—')}</td><td class="p-3 text-white">${escapeHtml(l.file_name || l.file_path || '—')}</td><td class="p-3 text-slate-300">${fmtBytesForAdmin(l.file_size_bytes)}</td><td class="p-3 text-slate-400 max-w-[350px] truncate" title="${escapeHtml(l.requested_url || '')}">${escapeHtml(l.endpoint || l.requested_url || '—')}</td><td class="p-3 ${l.status === 'completed' ? 'text-emerald-400' : l.status === 'failed' ? 'text-red-400' : 'text-amber-300'} font-semibold">${escapeHtml(l.status)}</td><td class="p-3">${escapeHtml(String(l.http_status || '—'))}</td><td class="p-3 text-slate-500">${l.completed_at ? new Date(l.completed_at).toLocaleString() : '—'}</td><td class="p-3 text-red-300 max-w-[300px] truncate">${escapeHtml(l.error || '—')}</td></tr>`).join('') || '<tr><td colspan="10" class="p-8 text-center text-slate-500">No download records found.</td></tr>'}
+          ${logs.map(l => `<tr><td class="p-3 text-slate-500 whitespace-nowrap">${new Date(l.started_at).toLocaleString()}</td><td class="p-3 text-slate-200">${escapeHtml(l.username || 'Public')}</td><td class="p-3 font-mono text-white">${escapeHtml(l.ip_address || '—')}</td><td class="p-3 text-white">${escapeHtml(l.file_name || l.file_path || '—')}</td><td class="p-3 text-slate-300">${fmtBytesForAdmin(l.file_size_bytes)}</td><td class="p-3 text-slate-400 max-w-[350px] truncate" title="${escapeHtml(l.requested_url || '')}">${escapeHtml(l.endpoint || l.requested_url || '—')}</td><td class="p-3 ${l.status === 'completed' ? 'text-emerald-400' : l.status === 'failed' ? 'text-red-400' : 'text-amber-300'} font-semibold">${escapeHtml(l.status)}</td><td class="p-3">${escapeHtml(String(l.http_status || '—'))}</td><td class="p-3 text-slate-500">${l.completed_at ? new Date(l.completed_at).toLocaleString() : '—'}</td><td class="p-3 text-red-300 max-w-[300px] truncate">${escapeHtml(l.error || '—')}</td></tr>`).join('') || '<tr><td colspan="10" class="p-8 text-center text-slate-500">No download records found.</td></tr>'}
           </tbody></table></div>
         </div>`;
     } else if (AppState.adminTab === 'ip-history') {
@@ -3513,7 +5151,7 @@ async function renderAdminSubTabContent() {
           <div class="glass-card p-5 rounded-2xl border border-slate-800">
             <div class="flex items-center justify-between gap-3 mb-4"><div><h3 class="text-sm font-bold text-white">IP Tracking</h3><p class="text-xs text-slate-500 mt-1">Known registration/login IP addresses.</p></div><div class="flex items-center gap-2"><span class="text-xs text-slate-500">${historyResult.total || 0} records</span><button onclick="clearAdminLogs('ip-history')" class="bg-red-600/15 hover:bg-red-600/25 text-red-300 border border-red-500/20 px-3 py-2 rounded-lg text-xs font-bold">Clear Logs</button></div></div>
             <div class="admin-table-scroll"><table class="min-w-[820px] w-full text-xs"><thead><tr class="text-left text-slate-500 border-b border-slate-800"><th class="py-3 pr-3">User</th><th class="py-3 pr-3">IPv4</th><th class="py-3 pr-3">IPv6</th><th class="py-3 pr-3">Action</th><th class="py-3">Time</th></tr></thead><tbody class="divide-y divide-slate-800/60">
-              ${loginHistory.map(r => `<tr><td class="py-3 pr-3"><div class="font-semibold text-slate-200">${escapeHtml(r.username)}</div><div class="text-slate-500">${escapeHtml(r.email)}</div></td><td class="py-3 pr-3 font-mono text-sky-300">${escapeHtml(r.ip_v4 || '—')}</td><td class="py-3 pr-3 font-mono text-cyan-300">${escapeHtml(r.ip_v6 || '—')}</td><td class="py-3 pr-3"><span class="px-2 py-1 rounded-md bg-slate-800 text-slate-300">${escapeHtml(r.action)}</span></td><td class="py-3 text-slate-500">${new Date(r.timestamp).toLocaleString()}</td></tr>`).join('') || '<tr><td colspan="5" class="py-8 text-center text-slate-500">No IP records found.</td></tr>'}
+              ${loginHistory.map(r => `<tr><td class="py-3 pr-3"><div class="font-semibold text-slate-200">${escapeHtml(r.username)}</div><div class="text-slate-500">${escapeHtml(r.email)}</div></td><td class="py-3 pr-3 font-mono text-white">${escapeHtml(r.ip_v4 || '—')}</td><td class="py-3 pr-3 font-mono text-slate-300">${escapeHtml(r.ip_v6 || '—')}</td><td class="py-3 pr-3"><span class="px-2 py-1 rounded-md bg-slate-800 text-slate-300">${escapeHtml(r.action)}</span></td><td class="py-3 text-slate-500">${new Date(r.timestamp).toLocaleString()}</td></tr>`).join('') || '<tr><td colspan="5" class="py-8 text-center text-slate-500">No IP records found.</td></tr>'}
             </tbody></table></div>
           </div>
         </div>`;
@@ -3549,7 +5187,7 @@ async function renderAdminSubTabContent() {
             ${templates.map(t => {
               const isSuspendTpl = t.slug === 'user_suspended';
               const isUnsuspendTpl = t.slug === 'user_unsuspended';
-              const badgeClass = isSuspendTpl ? 'bg-red-500/20 text-red-400 border-red-500/30' : isUnsuspendTpl ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-sky-500/20 text-sky-400 border-sky-500/30';
+              const badgeClass = isSuspendTpl ? 'bg-red-500/20 text-red-400 border-red-500/30' : isUnsuspendTpl ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-white/10 text-white border-white/20';
               return `
               <div class="glass-card p-5 rounded-2xl border border-slate-800 flex flex-col justify-between gap-4">
                 <div>
@@ -3560,7 +5198,7 @@ async function renderAdminSubTabContent() {
                   <div class="text-xs text-slate-400 mb-1"><strong>Subject:</strong> <span class="text-slate-200">${escapeHtml(t.subject)}</span></div>
                 </div>
                 <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-800/60">
-                  <button onclick="openEditEmailTemplateModal('${escapeHtml(t.slug)}')" class="bg-slate-800 hover:bg-slate-700 text-sky-400 hover:text-sky-300 px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors">
+                  <button onclick="openEditEmailTemplateModal('${escapeHtml(t.slug)}')" class="bg-slate-800 hover:bg-slate-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors">
                     <i data-lucide="edit-3" class="w-3.5 h-3.5"></i> Edit Template
                   </button>
                 </div>
@@ -3577,7 +5215,7 @@ async function renderAdminSubTabContent() {
         <form onsubmit="handleSaveAppSettings(event)" class="max-w-2xl space-y-4">
           <div class="glass-card p-6 rounded-2xl border border-slate-800 space-y-4">
             <div><h3 class="text-sm font-bold text-white">Application Settings</h3><p class="text-xs text-slate-500 mt-1">Changes are stored in the database and used by the application.</p></div>
-            <label class="flex items-center justify-between gap-4 p-3 rounded-xl bg-slate-900/60 border border-slate-800"><span><span class="block text-xs font-semibold text-white">Anti multi-account protection</span><span class="block text-[11px] text-slate-500 mt-1">Block registrations from a known IP.</span></span><input id="setting-anti-multi" type="checkbox" ${enabled ? 'checked' : ''} class="w-4 h-4 accent-sky-500"></label>
+            <label class="flex items-center justify-between gap-4 p-3 rounded-xl bg-slate-900/60 border border-slate-800"><span><span class="block text-xs font-semibold text-white">Anti multi-account protection</span><span class="block text-[11px] text-slate-500 mt-1">Block registrations from a known IP.</span></span><input id="setting-anti-multi" type="checkbox" ${enabled ? 'checked' : ''} class="w-4 h-4 accent-white"></label>
             <div class="grid sm:grid-cols-2 gap-4"><div><label class="block text-xs text-slate-400 mb-1">Application Name</label><input id="setting-app-name" value="${escapeHtml(settings.app_name || '')}" class="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-sm text-white"></div><div><label class="block text-xs text-slate-400 mb-1">Website Title</label><input id="setting-website-title" value="${escapeHtml(settings.website_title || settings.app_name || '')}" class="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-sm text-white"></div></div>
             <div><label class="block text-xs text-slate-400 mb-1">Application URL</label><input id="setting-app-url" value="${escapeHtml(settings.app_url || '')}" class="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-sm text-white"></div>
             <div class="flex flex-wrap items-center gap-4 p-3 rounded-xl bg-slate-950/50 border border-slate-800"><div class="w-12 h-12 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center overflow-hidden shrink-0">${settings.website_icon_url ? `<img src="${escapeHtml(settings.website_icon_url)}" alt="Website icon" class="w-full h-full object-contain">` : '<i data-lucide="image" class="w-5 h-5 text-slate-500"></i>'}</div><div class="flex-1 min-w-[180px]"><div class="text-sm font-semibold text-white">Website Icon</div><div class="text-xs text-slate-500 mt-1">PNG, JPG, WEBP, GIF or ICO, maximum 2 MB.</div></div><input id="setting-website-icon-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/x-icon,.ico" class="hidden" onchange="uploadWebsiteIcon(event)"><button type="button" onclick="document.getElementById('setting-website-icon-file').click()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold px-4 py-2 rounded-lg text-xs">Upload Icon</button></div>
@@ -3591,9 +5229,9 @@ async function renderAdminSubTabContent() {
         <form onsubmit="handleSaveAdminDetails(event)" class="max-w-2xl space-y-4">
           <div class="glass-card p-6 rounded-2xl border border-slate-800 space-y-4">
             <div><h3 class="text-sm font-bold text-white">Details</h3><p class="text-xs text-slate-500 mt-1">Control which contact details appear on the user dashboard.</p></div>
-            <label class="flex items-center justify-between gap-4 p-3 rounded-xl bg-slate-900/60 border border-slate-800"><span><span class="block text-xs font-semibold text-white">Show Discord section</span><span class="block text-[11px] text-slate-500 mt-1">Show the Discord logo and Join button on the dashboard.</span></span><input id="details-discord-enabled" type="checkbox" ${String(settings.discord_enabled) === 'true' ? 'checked' : ''} class="w-4 h-4 accent-sky-500"></label>
+            <label class="flex items-center justify-between gap-4 p-3 rounded-xl bg-slate-900/60 border border-slate-800"><span><span class="block text-xs font-semibold text-white">Show Discord section</span><span class="block text-[11px] text-slate-500 mt-1">Show the Discord logo and Join button on the dashboard.</span></span><input id="details-discord-enabled" type="checkbox" ${String(settings.discord_enabled) === 'true' ? 'checked' : ''} class="w-4 h-4 accent-white"></label>
             <div><label class="block text-xs text-slate-400 mb-1">Discord Join Link</label><input id="details-discord-url" type="url" value="${escapeHtml(settings.discord_join_url || '')}" placeholder="https://discord.gg/yourserver" class="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-sm text-white"></div>
-            <label class="flex items-center justify-between gap-4 p-3 rounded-xl bg-slate-900/60 border border-slate-800"><span><span class="block text-xs font-semibold text-white">Show Contact Email</span><span class="block text-[11px] text-slate-500 mt-1">Show a contact email card on the dashboard.</span></span><input id="details-contact-enabled" type="checkbox" ${String(settings.contact_email_enabled) === 'true' ? 'checked' : ''} class="w-4 h-4 accent-sky-500"></label>
+            <label class="flex items-center justify-between gap-4 p-3 rounded-xl bg-slate-900/60 border border-slate-800"><span><span class="block text-xs font-semibold text-white">Show Contact Email</span><span class="block text-[11px] text-slate-500 mt-1">Show a contact email card on the dashboard.</span></span><input id="details-contact-enabled" type="checkbox" ${String(settings.contact_email_enabled) === 'true' ? 'checked' : ''} class="w-4 h-4 accent-white"></label>
             <div><label class="block text-xs text-slate-400 mb-1">Contact Email</label><input id="details-contact-email" type="email" value="${escapeHtml(settings.contact_email || '')}" placeholder="support@example.com" class="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-sm text-white"></div>
             <button type="submit" class="bg-amber-600 hover:bg-amber-500 text-white font-bold px-4 py-2.5 rounded-lg">Save Details</button>
           </div>
@@ -3605,7 +5243,7 @@ async function renderAdminSubTabContent() {
         <div class="glass-card rounded-2xl border border-slate-800 overflow-hidden">
           <div class="px-5 py-4 border-b border-slate-800 flex items-center justify-between"><div><h3 class="text-sm font-bold text-white">Audit Logs</h3><p class="text-xs text-slate-500 mt-1">Recent administrative and user actions.</p></div><div class="flex items-center gap-2"><span class="text-xs text-slate-500">${auditResult.total || 0} records</span><button onclick="clearAdminLogs('audit-logs')" class="bg-red-600/15 hover:bg-red-600/25 text-red-300 border border-red-500/20 px-3 py-2 rounded-lg text-xs font-bold">Clear Logs</button></div></div>
           <div class="admin-table-scroll"><table class="min-w-[900px] w-full text-xs"><thead><tr class="text-left text-slate-500 border-b border-slate-800"><th class="p-3">Time</th><th class="p-3">User</th><th class="p-3">Action</th><th class="p-3">IP</th><th class="p-3">Details</th></tr></thead><tbody class="divide-y divide-slate-800/60">
-            ${logs.map(log => `<tr><td class="p-3 text-slate-500 whitespace-nowrap">${new Date(log.timestamp).toLocaleString()}</td><td class="p-3 text-slate-200">${escapeHtml(log.username || 'System')}</td><td class="p-3"><span class="px-2 py-1 rounded-md bg-amber-500/10 text-amber-300">${escapeHtml(log.action)}</span></td><td class="p-3 font-mono text-sky-300">${escapeHtml(log.ip_address || '—')}</td><td class="p-3 text-slate-400 max-w-[420px] truncate" title="${escapeHtml(log.details || '')}">${escapeHtml(log.details || '—')}</td></tr>`).join('') || '<tr><td colspan="5" class="p-8 text-center text-slate-500">No audit logs found.</td></tr>'}
+            ${logs.map(log => `<tr><td class="p-3 text-slate-500 whitespace-nowrap">${new Date(log.timestamp).toLocaleString()}</td><td class="p-3 text-slate-200">${escapeHtml(log.username || 'System')}</td><td class="p-3"><span class="px-2 py-1 rounded-md bg-amber-500/10 text-amber-300">${escapeHtml(log.action)}</span></td><td class="p-3 font-mono text-white">${escapeHtml(log.ip_address || '—')}</td><td class="p-3 text-slate-400 max-w-[420px] truncate" title="${escapeHtml(log.details || '')}">${escapeHtml(log.details || '—')}</td></tr>`).join('') || '<tr><td colspan="5" class="p-8 text-center text-slate-500">No audit logs found.</td></tr>'}
           </tbody></table></div>
         </div>`;
     } else if (AppState.adminTab === 'console') {
@@ -3724,13 +5362,13 @@ function renderTerminalConsole(container) {
         <div class="flex flex-wrap items-center gap-3">
           <!-- Connection Mode Switcher -->
           <div class="flex items-center bg-slate-100 dark:bg-slate-900/80 p-1 rounded-xl border border-slate-200 dark:border-slate-800 text-xs">
-            <button onclick="setConsoleTerminalMode('auto')" class="px-2.5 py-1 rounded-lg font-semibold transition-all ${currentMode === 'auto' ? 'bg-sky-600 text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-white'}" title="Auto: Tries WebSocket, falls back instantly to HTTP Stream if blocked">
+            <button onclick="setConsoleTerminalMode('auto')" class="px-2.5 py-1 rounded-lg font-semibold transition-all ${currentMode === 'auto' ? 'bg-slate-900 text-white dark:bg-white dark:text-black font-bold shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-white'}" title="Auto: Tries WebSocket, falls back instantly to HTTP Stream if blocked">
               Auto (WS + Fallback)
             </button>
-            <button onclick="setConsoleTerminalMode('http')" class="px-2.5 py-1 rounded-lg font-semibold transition-all ${currentMode === 'http' ? 'bg-sky-600 text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-white'}" title="HTTP Stream: Reliable streaming through Cloudflare & restrictive reverse proxies">
+            <button onclick="setConsoleTerminalMode('http')" class="px-2.5 py-1 rounded-lg font-semibold transition-all ${currentMode === 'http' ? 'bg-slate-900 text-white dark:bg-white dark:text-black font-bold shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-white'}" title="HTTP Stream: Reliable streaming through Cloudflare & restrictive reverse proxies">
               HTTP Stream
             </button>
-            <button onclick="setConsoleTerminalMode('ws')" class="px-2.5 py-1 rounded-lg font-semibold transition-all ${currentMode === 'ws' ? 'bg-sky-600 text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-white'}" title="WebSocket: Pure low-latency WebSocket connection">
+            <button onclick="setConsoleTerminalMode('ws')" class="px-2.5 py-1 rounded-lg font-semibold transition-all ${currentMode === 'ws' ? 'bg-slate-900 text-white dark:bg-white dark:text-black font-bold shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-white'}" title="WebSocket: Pure low-latency WebSocket connection">
               WebSocket
             </button>
           </div>
@@ -3752,14 +5390,14 @@ function renderTerminalConsole(container) {
         <details class="group">
           <summary class="flex items-center justify-between cursor-pointer list-none text-xs font-bold text-slate-700 dark:text-slate-300">
             <span class="flex items-center gap-2">
-              <i data-lucide="help-circle" class="w-4 h-4 text-sky-400"></i>
+              <i data-lucide="help-circle" class="w-4 h-4 text-white"></i>
               VPS Deployment Notice: Solving "WebSocket Disconnected" on Custom Domains (Nginx / Cloudflare)
             </span>
             <span class="transition group-open:rotate-180 text-slate-400">▾</span>
           </summary>
           <div class="mt-3 text-xs text-slate-600 dark:text-slate-400 space-y-2 leading-relaxed border-t border-slate-200 dark:border-slate-800 pt-3">
             <p>
-              If your VPS console showed <span class="font-mono text-red-400">WebSocket Error</span>, Zenstorage now <b>automatically falls back to HTTP Streaming</b> so you can use the interactive shell right away!
+              If your VPS console showed <span class="font-mono text-red-400">WebSocket Error</span>, ZenCloud now <b>automatically falls back to HTTP Streaming</b> so you can use the interactive shell right away!
             </p>
             <p>
               To enable high-speed direct <b>WebSockets</b> on your VPS Nginx reverse proxy:
@@ -4226,7 +5864,7 @@ function openEditUserModal(userId) {
           <div><label class="block text-xs text-slate-400 mb-1">Bandwidth (GB/mo)</label><input id="edit-user-bw" type="number" min="1" step="0.5" value="${bwGb}" required class="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-sm text-white"></div>
           <div><label class="block text-xs text-slate-400 mb-1">API Calls (/mo)</label><input id="edit-user-api" type="number" min="1000" step="1000" value="${apiLimit}" required class="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-sm text-white"></div>
         </div>
-        <div class="flex justify-end gap-2 pt-3"><button type="button" onclick="document.getElementById('edit-user-modal')?.remove()" class="px-4 py-2.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-bold">Cancel</button><button type="submit" class="px-4 py-2.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold">Save Changes</button></div>
+        <div class="flex justify-end gap-2 pt-3"><button type="button" onclick="document.getElementById('edit-user-modal')?.remove()" class="px-4 py-2.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-bold">Cancel</button><button type="submit" class="px-4 py-2.5 rounded-lg bg-white hover:bg-neutral-200 text-black text-xs font-bold transition-all">Save Changes</button></div>
       </form>
     </div>`;
   document.body.appendChild(modal);
@@ -4311,6 +5949,108 @@ function editUserQuotaPrompt(userId, currentQuota) {
   .catch(err => showToast(err.message, 'error'));
 }
 
+function openPutOnVerificationModal(userId, username, email, name) {
+  document.getElementById('put-verification-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.id = 'put-verification-modal';
+  modal.className = 'fixed inset-0 z-[60] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4';
+  modal.innerHTML = `
+    <div class="w-full max-w-md glass-card rounded-2xl border border-amber-500/30 shadow-2xl p-6 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
+            <i data-lucide="shield-alert" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-white">Require Security Verification</h3>
+            <p class="text-xs text-slate-400">Put @${escapeHtml(username)} on 4-Digit OTP verification</p>
+          </div>
+        </div>
+        <button type="button" onclick="document.getElementById('put-verification-modal')?.remove()" class="text-slate-400 hover:text-white">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <p class="text-xs text-slate-300 leading-relaxed">
+        If you suspect this account of policy violation or suspicious logins, placing it under verification will lock their access until they enter the <b>4-digit OTP code</b> sent to their registered email (<b>${escapeHtml(email || username)}</b>).
+      </p>
+
+      <form onsubmit="handlePutOnVerification(event, ${Number(userId)})" class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Reason for Security Review</label>
+          <input type="text" id="verification-reason-input" required value="Suspicious account activity detected. Please verify your identity." class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500">
+          <p class="text-[11px] text-slate-500 mt-1">This reason will be included in the email and displayed on their screen.</p>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2 border-t border-slate-800">
+          <button type="button" onclick="document.getElementById('put-verification-modal')?.remove()" class="px-4 py-2.5 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold">Cancel</button>
+          <button type="submit" id="btn-submit-verification" class="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition-all flex items-center gap-1.5">
+            <i data-lucide="send" class="w-3.5 h-3.5"></i>
+            <span>Send OTP & Require Verification</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  if (window.lucide) lucide.createIcons();
+}
+
+async function handlePutOnVerification(e, userId) {
+  e.preventDefault();
+  const reason = document.getElementById('verification-reason-input')?.value.trim();
+  const btn = document.getElementById('btn-submit-verification');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i> Placing on verification...`;
+    if (window.lucide) lucide.createIcons();
+  }
+
+  try {
+    const data = await apiRequest(`/admin/users/${userId}/require-verification`, {
+      method: 'POST',
+      body: { reason }
+    });
+
+    document.getElementById('put-verification-modal')?.remove();
+    showToast(data.message || 'User placed on 4-digit OTP verification.', 'success');
+    await renderAdminSubTabContent();
+  } catch (err) {
+    showToast(err.message, 'error');
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = `<i data-lucide="send" class="w-3.5 h-3.5"></i> Send OTP & Require Verification`;
+      if (window.lucide) lucide.createIcons();
+    }
+  }
+}
+
+async function handleLiftVerification(userId, username) {
+  if (!confirm(`Lift security OTP verification requirement for @${username}? The user will regain normal access immediately.`)) return;
+
+  try {
+    const data = await apiRequest(`/admin/users/${userId}/lift-verification`, {
+      method: 'POST'
+    });
+    showToast(data.message || `Verification requirement lifted for @${username}.`, 'success');
+    await renderAdminSubTabContent();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function handleAdminResendOtp(userId, username) {
+  try {
+    const data = await apiRequest(`/admin/users/${userId}/resend-otp`, {
+      method: 'POST'
+    });
+    showToast(data.message || `New 4-digit OTP generated (Code: ${data.otpCode}) and email sent to @${username}.`, 'success');
+    await renderAdminSubTabContent();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
 function toggleUserSuspend(userId, currentStatus) {
   const user = (AppState.adminUsers || []).find(u => Number(u.id) === Number(userId));
   if (!user) return showToast('User not found.', 'error');
@@ -4353,7 +6093,7 @@ function openSuspendUserModal(userId, username, email, name) {
         </div>
         <div class="flex justify-between text-slate-300">
           <span class="text-slate-500">Email Address:</span>
-          <span class="font-mono text-cyan-300">${escapeHtml(email)}</span>
+          <span class="font-mono text-white">${escapeHtml(email)}</span>
         </div>
       </div>
 
@@ -4452,7 +6192,7 @@ function openUnsuspendUserModal(userId, username, email, name) {
         </div>
         <div class="flex justify-between text-slate-300">
           <span class="text-slate-500">Email Address:</span>
-          <span class="font-mono text-cyan-300">${escapeHtml(email)}</span>
+          <span class="font-mono text-white">${escapeHtml(email)}</span>
         </div>
         ${priorReason ? `
         <div class="pt-1 border-t border-slate-800/80 text-[11px] text-amber-300">
@@ -4546,18 +6286,18 @@ async function openEditEmailTemplateModal(slug) {
         <form onsubmit="handleSaveEmailTemplate(event, '${escapeHtml(tpl.slug)}')" class="space-y-4">
           <div>
             <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Subject Line</label>
-            <input type="text" id="tpl-subject" value="${escapeHtml(tpl.subject)}" required class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-sky-500">
+            <input type="text" id="tpl-subject" value="${escapeHtml(tpl.subject)}" required class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-white">
           </div>
 
           <div>
             <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">HTML Body</label>
-            <textarea id="tpl-body" rows="12" required class="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 font-mono text-xs text-white focus:outline-none focus:border-sky-500 leading-relaxed">${escapeHtml(tpl.body_html)}</textarea>
+            <textarea id="tpl-body" rows="12" required class="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 font-mono text-xs text-white focus:outline-none focus:border-white leading-relaxed">${escapeHtml(tpl.body_html)}</textarea>
             <p class="text-[11px] text-slate-500 mt-1">Available placeholders: <code>{{name}}</code>, <code>{{username}}</code>, <code>{{reason}}</code>, <code>{{suspended_at}}</code>, <code>{{reactivated_at}}</code>, <code>{{login_url}}</code>, <code>{{app_name}}</code></p>
           </div>
 
           <div class="flex justify-end gap-2 pt-2 border-t border-slate-800">
             <button type="button" onclick="document.getElementById('edit-template-modal')?.remove()" class="px-4 py-2.5 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold">Cancel</button>
-            <button type="submit" class="px-5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold">Save Template</button>
+            <button type="submit" class="px-5 py-2.5 rounded-xl bg-white hover:bg-neutral-200 text-black text-xs font-bold transition-all">Save Template</button>
           </div>
         </form>
       </div>

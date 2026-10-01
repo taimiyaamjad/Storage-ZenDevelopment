@@ -183,7 +183,8 @@ router.get('/users', async (req, res) => {
 
     let sql = `SELECT id, name, username, email, email_verified, role, storage_quota_bytes, used_storage_bytes, 
                       monthly_bandwidth_limit_bytes, used_bandwidth_bytes, monthly_api_requests_limit, used_api_requests, bandwidth_cycle_reset_at,
-                      is_suspended, suspension_reason, suspended_at, is_suspicious, suspicious_reason, created_at FROM users WHERE 1=1 `;
+                      is_suspended, suspension_reason, suspended_at, is_suspicious, suspicious_reason,
+                      requires_otp_verification, otp_code, otp_expires_at, otp_sent_at, otp_reason, created_at FROM users WHERE 1=1 `;
     const params = [];
 
     if (search) {
@@ -192,7 +193,7 @@ router.get('/users', async (req, res) => {
     }
 
     if (filter === 'suspended') sql += ` AND is_suspended = 1 `;
-    if (filter === 'suspicious') sql += ` AND is_suspicious = 1 `;
+    if (filter === 'suspicious' || filter === 'verification') sql += ` AND (is_suspicious = 1 OR requires_otp_verification = 1) `;
     if (filter === 'admin') sql += ` AND role = 'admin' `;
 
     sql += ` ORDER BY created_at DESC;`;
@@ -380,6 +381,108 @@ router.post('/users/:id/unsuspend', async (req, res) => {
   } catch (err) {
     console.error('Admin unsuspend user error:', err);
     return res.status(500).json({ error: 'Failed to unsuspend user: ' + err.message });
+  }
+});
+
+/**
+ * 3c. Admin Put User On Security OTP Verification
+ */
+router.post('/users/:id/require-verification', async (req, res) => {
+  try {
+    const userId = Number(req.params.id);
+    if (!Number.isInteger(userId) || userId <= 0) return res.status(400).json({ error: 'Invalid user ID.' });
+
+    const user = await getRow(`SELECT * FROM users WHERE id = ?;`, [userId]);
+    if (!user) return res.status(404).json({ error: 'User not found.' });
+
+    const reason = (req.body.reason || req.body.suspiciousReason || '').trim() || 'Suspicious account activity detected. Please complete 4-digit verification.';
+    const otpCode = String(Math.floor(1000 + Math.random() * 9000));
+
+    await runQuery(
+      `UPDATE users SET requires_otp_verification = 1, is_suspicious = 1, suspicious_reason = ?, otp_code = ?, otp_expires_at = datetime('now', '+24 hours'), otp_sent_at = CURRENT_TIMESTAMP, otp_reason = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?;`,
+      [reason, otpCode, reason, userId]
+    );
+
+    const emailSent = await EmailService.sendOtpVerificationEmail(user, otpCode, reason);
+    await logAudit(req.user.id, 'admin_require_otp_verification', { targetUserId: userId, username: user.username, reason, otpCode, emailSent }, req);
+
+    return res.json({
+      message: `User @${user.username} has been placed under 4-digit OTP verification${emailSent ? ' and email was sent' : ''}.`,
+      otpCode,
+      emailSent,
+      user: {
+        id: user.id,
+        username: user.username,
+        requires_otp_verification: 1,
+        otp_code: otpCode,
+        is_suspicious: 1,
+        suspicious_reason: reason
+      }
+    });
+  } catch (err) {
+    console.error('Admin require verification error:', err);
+    return res.status(500).json({ error: 'Failed to put user on verification: ' + err.message });
+  }
+});
+
+/**
+ * 3d. Admin Lift OTP Verification
+ */
+router.post('/users/:id/lift-verification', async (req, res) => {
+  try {
+    const userId = Number(req.params.id);
+    if (!Number.isInteger(userId) || userId <= 0) return res.status(400).json({ error: 'Invalid user ID.' });
+
+    const user = await getRow(`SELECT * FROM users WHERE id = ?;`, [userId]);
+    if (!user) return res.status(404).json({ error: 'User not found.' });
+
+    await runQuery(
+      `UPDATE users SET requires_otp_verification = 0, is_suspicious = 0, otp_code = NULL, otp_reason = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?;`,
+      [userId]
+    );
+
+    await logAudit(req.user.id, 'admin_lift_otp_verification', { targetUserId: userId, username: user.username }, req);
+
+    return res.json({
+      message: `Security verification requirement for @${user.username} has been lifted.`,
+      user: { id: user.id, username: user.username, requires_otp_verification: 0, is_suspicious: 0 }
+    });
+  } catch (err) {
+    console.error('Admin lift verification error:', err);
+    return res.status(500).json({ error: 'Failed to lift verification: ' + err.message });
+  }
+});
+
+/**
+ * 3e. Admin Resend OTP Email
+ */
+router.post('/users/:id/resend-otp', async (req, res) => {
+  try {
+    const userId = Number(req.params.id);
+    if (!Number.isInteger(userId) || userId <= 0) return res.status(400).json({ error: 'Invalid user ID.' });
+
+    const user = await getRow(`SELECT * FROM users WHERE id = ?;`, [userId]);
+    if (!user) return res.status(404).json({ error: 'User not found.' });
+
+    const newOtp = String(Math.floor(1000 + Math.random() * 9000));
+    const reason = user.otp_reason || user.suspicious_reason || 'Suspicious account verification check.';
+
+    await runQuery(
+      `UPDATE users SET requires_otp_verification = 1, otp_code = ?, otp_expires_at = datetime('now', '+24 hours'), otp_sent_at = CURRENT_TIMESTAMP WHERE id = ?;`,
+      [newOtp, userId]
+    );
+
+    const emailSent = await EmailService.sendOtpVerificationEmail(user, newOtp, reason);
+    await logAudit(req.user.id, 'admin_resend_user_otp', { targetUserId: userId, username: user.username, newOtp, emailSent }, req);
+
+    return res.json({
+      message: `A new 4-digit OTP code has been generated and sent to @${user.username}'s email (${user.email}).`,
+      otpCode: newOtp,
+      emailSent
+    });
+  } catch (err) {
+    console.error('Admin resend OTP error:', err);
+    return res.status(500).json({ error: 'Failed to resend OTP: ' + err.message });
   }
 });
 

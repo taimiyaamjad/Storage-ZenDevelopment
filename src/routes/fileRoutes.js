@@ -157,6 +157,34 @@ router.post('/create-folder', requireAuth, async (req, res) => {
 });
 
 /**
+ * 2b. Create new empty or templated file
+ */
+router.post('/create-file', requireAuth, async (req, res) => {
+  try {
+    const userId = getEffectiveUserId(req);
+    const { path: filePath, content = '' } = req.body;
+    if (!filePath || !filePath.trim()) return res.status(400).json({ error: 'File path is required.' });
+
+    const { absolutePath } = SFTPService.resolveUserPath(userId, filePath.trim());
+    if (fs.existsSync(absolutePath)) {
+      return res.status(400).json({ error: 'A file or folder with this name already exists.' });
+    }
+
+    const parentDir = path.dirname(absolutePath);
+    if (!fs.existsSync(parentDir)) {
+      fs.mkdirSync(parentDir, { recursive: true });
+    }
+
+    fs.writeFileSync(absolutePath, content, 'utf8');
+    await persistUsage(userId);
+    await logAudit(req.user.id, 'create_file', { targetUserId: userId, path: filePath }, req);
+    return res.json({ message: 'File created successfully.', path: filePath });
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+});
+
+/**
  * 3. Delete files/folders (Supports single & bulk)
  */
 router.post('/delete', requireAuth, async (req, res) => {

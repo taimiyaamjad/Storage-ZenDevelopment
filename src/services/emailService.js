@@ -154,6 +154,30 @@ class EmailService {
       return false;
     }
   }
+
+  /**
+   * Send 4-Digit OTP Security Verification Code
+   */
+  static async sendOtpVerificationEmail(user, otpCode, reason) {
+    try {
+      const appSettings = await getAll('SELECT key, value FROM app_settings;');
+      const settingsMap = {};
+      for (const s of appSettings) settingsMap[s.key] = s.value;
+
+      const appName = settingsMap.app_name || 'ZenCloud Storage';
+
+      return await this.sendTemplatedEmail('otp_security_verification', user.email, {
+        name: user.name || user.username,
+        username: user.username,
+        otp_code: String(otpCode),
+        reason: reason || 'Suspicious activity or administrative security review.',
+        app_name: appName
+      });
+    } catch (err) {
+      console.error('Error in sendOtpVerificationEmail:', err);
+      return false;
+    }
+  }
 }
 
 module.exports = EmailService;

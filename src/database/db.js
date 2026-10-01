@@ -94,6 +94,11 @@ function initDatabase() {
         await ensureColumn('users', 'bandwidth_cycle_reset_at', 'DATETIME');
         await ensureColumn('users', 'suspension_reason', 'TEXT');
         await ensureColumn('users', 'suspended_at', 'DATETIME');
+        await ensureColumn('users', 'requires_otp_verification', 'INTEGER NOT NULL DEFAULT 0');
+        await ensureColumn('users', 'otp_code', 'TEXT');
+        await ensureColumn('users', 'otp_expires_at', 'DATETIME');
+        await ensureColumn('users', 'otp_sent_at', 'DATETIME');
+        await ensureColumn('users', 'otp_reason', 'TEXT');
         await runQuery(`UPDATE users SET bandwidth_cycle_reset_at = datetime('now', '+30 days') WHERE bandwidth_cycle_reset_at IS NULL;`);
         await runQuery(`UPDATE users SET email_verified = 1 WHERE role = 'admin' AND email_verified = 0;`);
 
@@ -828,6 +833,49 @@ function initDatabase() {
             </p>
           </div>
 
+        </div>
+      </div>
+      `
+    ],
+
+    [
+      'otp_security_verification',
+      'Security OTP Verification Code',
+      'Your 4-Digit Security Verification Code: {{otp_code}}',
+      `
+      <div style="margin:0;padding:0;background:#000000;font-family:Arial,Helvetica,sans-serif;color:#f3f4f6;">
+        <div style="max-width:540px;margin:20px auto;background:#0a0a0c;border:1px solid #222228;border-radius:16px;overflow:hidden;box-shadow:0 25px 50px -12px rgba(0,0,0,0.8);">
+          <div style="background:#111114;padding:24px 30px;border-bottom:1px solid #222228;text-align:center;">
+            <div style="font-size:22px;font-weight:800;letter-spacing:-0.5px;color:#ffffff;">
+              Zen<span style="color:#ffffff;">Cloud</span> <span style="font-size:11px;padding:3px 8px;border-radius:6px;background:rgba(255,255,255,0.15);color:#ffffff;text-transform:uppercase;font-weight:700;margin-left:6px;">Security</span>
+            </div>
+          </div>
+          <div style="padding:32px 28px;text-align:center;">
+            <h1 style="margin:0 0 12px 0;font-size:22px;font-weight:700;color:#ffffff;">
+              Account Security Verification
+            </h1>
+            <p style="margin:0 0 18px 0;font-size:14px;line-height:1.6;color:#9ca3af;">
+              Hello <strong>{{name}}</strong>, your account was placed under verification for security review.
+            </p>
+            <div style="background:#18181c;border-left:4px solid #f59e0b;padding:12px 16px;text-align:left;margin-bottom:24px;border-radius:0 8px 8px 0;">
+              <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#fbbf24;letter-spacing:0.5px;">Reason</div>
+              <div style="font-size:13px;color:#e5e7eb;margin-top:4px;">{{reason}}</div>
+            </div>
+            <p style="margin:0 0 16px 0;font-size:13px;color:#d1d5db;">
+              Enter this <strong>4-digit verification code</strong> on the screen to unlock your account:
+            </p>
+            <div style="background:#000000;border:2px solid rgba(255,255,255,0.3);border-radius:16px;padding:16px 24px;display:inline-block;margin:10px auto 24px auto;letter-spacing:14px;font-family:monospace;font-size:36px;font-weight:800;color:#ffffff;text-shadow:0 0 20px rgba(255,255,255,0.6);">
+              {{otp_code}}
+            </div>
+            <p style="margin:0;font-size:12px;color:#6b7280;line-height:1.5;">
+              This code will expire in 24 hours. If you did not request this verification, please contact your administrator.
+            </p>
+          </div>
+          <div style="background:#111114;border-top:1px solid #222228;padding:16px 30px;text-align:center;">
+            <p style="margin:0;font-size:11px;color:#6b7280;">
+              © ${new Date().getFullYear()} {{app_name}}. All rights reserved.
+            </p>
+          </div>
         </div>
       </div>
       `
