@@ -64,7 +64,16 @@ function createToastContainer() {
 }
 
 function escapeHtml(str) {
-  return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function escapeJsArg(str) {
+  return encodeURIComponent(String(str || ''));
 }
 
 function formatBytes(bytes) {
@@ -2015,7 +2024,7 @@ function renderBreadcrumbs(currentPath) {
   parts.forEach((p, idx) => {
     accumPath += '/' + p;
     const target = accumPath;
-    html += ` <span class="text-slate-400 dark:text-slate-600">/</span> <button onclick="navigateToPath('${target}')" class="hover:text-black dark:hover:text-white font-semibold">${escapeHtml(p)}</button>`;
+    html += ` <span class="text-slate-400 dark:text-slate-600">/</span> <button onclick="navigateToPath(decodeURIComponent('${encodeURIComponent(target)}'))" class="hover:text-black dark:hover:text-white font-semibold">${escapeHtml(p)}</button>`;
   });
 
   container.innerHTML = html;
@@ -2052,20 +2061,21 @@ function renderFileItems() {
       const isSelected = AppState.selectedPaths.includes(file.path);
       const icon = file.isDirectory ? 'folder' : getFileIcon(file.name);
       const iconColor = file.isDirectory ? 'text-amber-500 dark:text-amber-400' : 'text-slate-800 dark:text-white';
+      const encodedPath = encodeURIComponent(file.path);
 
       return `
-        <div class="file-grid-card p-4 rounded-xl relative group cursor-pointer ${isSelected ? 'ring-2 ring-black/40 dark:ring-white/60 bg-black/5 dark:bg-white/10' : ''}" onclick="toggleSelectFile('${file.path}', event)">
+        <div class="file-grid-card p-4 rounded-xl relative group cursor-pointer ${isSelected ? 'ring-2 ring-black/40 dark:ring-white/60 bg-black/5 dark:bg-white/10' : ''}" onclick="toggleSelectFile(decodeURIComponent('${encodedPath}'), event)">
           
           <div class="flex items-center justify-between mb-3">
-            <input type="checkbox" ${isSelected ? 'checked' : ''} onclick="event.stopPropagation(); toggleSelectFile('${file.path}')" class="w-4 h-4 rounded border-slate-300 dark:border-slate-700 accent-black dark:accent-white">
+            <input type="checkbox" ${isSelected ? 'checked' : ''} onclick="event.stopPropagation(); toggleSelectFile(decodeURIComponent('${encodedPath}'))" class="w-4 h-4 rounded border-slate-300 dark:border-slate-700 accent-black dark:accent-white">
             
             <!-- Context Menu Button -->
-            <button onclick="event.stopPropagation(); openFileContextMenu('${file.path}', ${file.isDirectory}, event)" class="opacity-0 group-hover:opacity-100 p-1 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 transition-opacity">
+            <button onclick="event.stopPropagation(); openFileContextMenu(decodeURIComponent('${encodedPath}'), ${file.isDirectory ? 'true' : 'false'}, event)" class="opacity-0 group-hover:opacity-100 p-1 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 transition-opacity">
               <i data-lucide="more-vertical" class="w-4 h-4"></i>
             </button>
           </div>
 
-          <div class="flex flex-col items-center text-center" onclick="event.stopPropagation(); ${file.isDirectory ? `navigateToPath('${file.path}')` : `handleFileClick('${file.path}')`}">
+          <div class="flex flex-col items-center text-center" onclick="event.stopPropagation(); ${file.isDirectory ? `navigateToPath(decodeURIComponent('${encodedPath}'))` : `handleFileClick(decodeURIComponent('${encodedPath}'))`}">
             <i data-lucide="${icon}" class="w-10 h-10 ${iconColor} mb-2 drop-shadow-sm"></i>
             <div class="text-xs font-bold text-slate-900 dark:text-white truncate w-full" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</div>
             <div class="text-[11px] font-medium text-slate-600 dark:text-slate-400 mt-1">${file.isDirectory ? 'Folder' : formatBytes(file.size)}</div>
@@ -2088,12 +2098,13 @@ function renderFileItems() {
         const isSelected = AppState.selectedPaths.includes(file.path);
         const icon = file.isDirectory ? 'folder' : getFileIcon(file.name);
         const iconColor = file.isDirectory ? 'text-amber-500 dark:text-amber-400' : 'text-slate-800 dark:text-white';
+        const encodedPath = encodeURIComponent(file.path);
 
         return `
           <div class="file-list-row px-4 py-3 flex items-center text-xs cursor-pointer ${isSelected ? 'bg-black/5 dark:bg-white/10' : ''}">
-            <input type="checkbox" ${isSelected ? 'checked' : ''} onclick="event.stopPropagation(); toggleSelectFile('${file.path}')" class="w-4 h-4 rounded border-slate-300 dark:border-slate-700 accent-black dark:accent-white mr-3">
+            <input type="checkbox" ${isSelected ? 'checked' : ''} onclick="event.stopPropagation(); toggleSelectFile(decodeURIComponent('${encodedPath}'))" class="w-4 h-4 rounded border-slate-300 dark:border-slate-700 accent-black dark:accent-white mr-3">
             
-            <div class="flex-1 flex items-center gap-3 min-w-0" onclick="${file.isDirectory ? `navigateToPath('${file.path}')` : `handleFileClick('${file.path}')`}">
+            <div class="flex-1 flex items-center gap-3 min-w-0" onclick="${file.isDirectory ? `navigateToPath(decodeURIComponent('${encodedPath}'))` : `handleFileClick(decodeURIComponent('${encodedPath}'))`}">
               <i data-lucide="${icon}" class="w-5 h-5 ${iconColor} shrink-0"></i>
               <span class="font-semibold text-slate-900 dark:text-white hover:underline truncate">${escapeHtml(file.name)}</span>
             </div>
@@ -2102,7 +2113,7 @@ function renderFileItems() {
             <span class="w-40 font-medium text-slate-600 dark:text-slate-400">${new Date(file.mtime).toLocaleString()}</span>
 
             <div class="w-16 text-right">
-              <button onclick="event.stopPropagation(); openFileContextMenu('${file.path}', ${file.isDirectory}, event)" class="p-1 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800">
+              <button onclick="event.stopPropagation(); openFileContextMenu(decodeURIComponent('${encodedPath}'), ${file.isDirectory ? 'true' : 'false'}, event)" class="p-1 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800">
                 <i data-lucide="more-vertical" class="w-4 h-4"></i>
               </button>
             </div>
@@ -3156,41 +3167,42 @@ function openFileContextMenu(filePath, isDirectory, e) {
   const ext = filePath.toLowerCase();
   const isArchive = ext.endsWith('.zip') || ext.endsWith('.tar') || ext.endsWith('.tar.gz') || ext.endsWith('.7z');
   const canEdit = !isDirectory && isEditableFile(filePath);
+  const encodedPath = encodeURIComponent(filePath);
 
   menu.innerHTML = `
     ${canEdit ? `
-      <button onclick="openFileEditor('${filePath}')" class="w-full text-left px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 flex items-center gap-2 text-white font-semibold border border-white/20 mb-1 transition-all">
+      <button onclick="openFileEditor(decodeURIComponent('${encodedPath}'))" class="w-full text-left px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 flex items-center gap-2 text-white font-semibold border border-white/20 mb-1 transition-all">
         <i data-lucide="code-2" class="w-4 h-4 text-white"></i> Edit in Editor
       </button>
     ` : ''}
 
-    <button onclick="downloadSingleFile('${filePath}')" class="w-full text-left px-3 py-2 rounded-lg hover:bg-neutral-800 flex items-center gap-2 text-slate-200">
+    <button onclick="downloadSingleFile(decodeURIComponent('${encodedPath}'))" class="w-full text-left px-3 py-2 rounded-lg hover:bg-neutral-800 flex items-center gap-2 text-slate-200">
       <i data-lucide="download" class="w-3.5 h-3.5 text-white"></i> Download
     </button>
 
-    <button onclick="openEmbedLinkModal('${filePath}')" class="w-full text-left px-3 py-2 rounded-lg hover:bg-neutral-800 flex items-center gap-2 text-white">
+    <button onclick="openEmbedLinkModal(decodeURIComponent('${encodedPath}'))" class="w-full text-left px-3 py-2 rounded-lg hover:bg-neutral-800 flex items-center gap-2 text-white">
       <i data-lucide="link-2" class="w-3.5 h-3.5 text-white"></i> Direct Embed / Public Link
     </button>
 
-    <button onclick="createShareLinkModal('${filePath}')" class="w-full text-left px-3 py-2 rounded-lg hover:bg-neutral-800 flex items-center gap-2 text-slate-200">
+    <button onclick="createShareLinkModal(decodeURIComponent('${encodedPath}'))" class="w-full text-left px-3 py-2 rounded-lg hover:bg-neutral-800 flex items-center gap-2 text-slate-200">
       <i data-lucide="share-2" class="w-3.5 h-3.5 text-emerald-400"></i> Create Share Link
     </button>
 
-    <button onclick="renameFilePrompt('${filePath}')" class="w-full text-left px-3 py-2 rounded-lg hover:bg-neutral-800 flex items-center gap-2 text-slate-200">
+    <button onclick="renameFilePrompt(decodeURIComponent('${encodedPath}'))" class="w-full text-left px-3 py-2 rounded-lg hover:bg-neutral-800 flex items-center gap-2 text-slate-200">
       <i data-lucide="edit-3" class="w-3.5 h-3.5 text-amber-400"></i> Rename
     </button>
 
-    <button onclick="moveFilePrompt('${filePath}')" class="w-full text-left px-3 py-2 rounded-lg hover:bg-neutral-800 flex items-center gap-2 text-slate-200">
+    <button onclick="moveFilePrompt(decodeURIComponent('${encodedPath}'))" class="w-full text-left px-3 py-2 rounded-lg hover:bg-neutral-800 flex items-center gap-2 text-slate-200">
       <i data-lucide="folder-input" class="w-3.5 h-3.5 text-white"></i> Move to...
     </button>
 
     ${isArchive ? `
-      <button onclick="extractArchivePrompt('${filePath}')" class="w-full text-left px-3 py-2 rounded-lg hover:bg-neutral-800 flex items-center gap-2 text-white">
+      <button onclick="extractArchivePrompt(decodeURIComponent('${encodedPath}'))" class="w-full text-left px-3 py-2 rounded-lg hover:bg-neutral-800 flex items-center gap-2 text-white">
         <i data-lucide="file-archive" class="w-3.5 h-3.5"></i> Extract Archive
       </button>
     ` : ''}
 
-    <button onclick="deleteSingleFile('${filePath}')" class="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 flex items-center gap-2 text-red-400">
+    <button onclick="deleteSingleFile(decodeURIComponent('${encodedPath}'))" class="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 flex items-center gap-2 text-red-400">
       <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Delete
     </button>
   `;
@@ -3464,6 +3476,7 @@ async function openFilePreview(filePath) {
 
     const fileName = filePath.split('/').filter(Boolean).pop() || 'Preview';
     const previewUrl = getEffectivePreviewUrl(filePath, `&_=${Date.now()}`);
+    const encodedPath = encodeURIComponent(filePath);
     const ext = fileName.includes('.') ? fileName.split('.').pop().toLowerCase() : '';
     const imageExts = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'avif'];
     const videoExts = ['mp4', 'webm', 'mkv', 'mov', 'avi', 'm4v', 'ogv'];
@@ -3482,7 +3495,7 @@ async function openFilePreview(filePath) {
         </div>
         <div class="flex items-center gap-2">
           ${isEditableFile(filePath) ? `
-            <button onclick="closeFilePreview(); openFileEditor('${filePath}')" class="zencloud-btn-primary px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm">
+            <button onclick="closeFilePreview(); openFileEditor(decodeURIComponent('${encodedPath}'))" class="zencloud-btn-primary px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm">
               <i data-lucide="code-2" class="w-3.5 h-3.5"></i> Edit
             </button>
           ` : ''}
@@ -3537,7 +3550,7 @@ async function openFilePreview(filePath) {
         <div class="w-full h-full flex flex-col p-1 space-y-2">
           <div class="flex justify-between items-center px-1">
             <span class="text-xs text-slate-400 font-mono">${escapeHtml(fileName)}</span>
-            <button onclick="closeFilePreview(); openFileEditor('${filePath}')" class="zencloud-btn-primary px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm">
+            <button onclick="closeFilePreview(); openFileEditor(decodeURIComponent('${encodedPath}'))" class="zencloud-btn-primary px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm">
               <i data-lucide="edit-3" class="w-3.5 h-3.5"></i> Open in Inbuilt Editor
             </button>
           </div>
@@ -5087,27 +5100,27 @@ async function renderAdminSubTabContent() {
                       }
                     </span>
                     <div class="w-64 text-right flex items-center justify-end gap-1">
-                      <button onclick="inspectUserDirectory('${u.id}', '${escapeHtml(u.username)}')" class="p-1.5 text-slate-400 hover:text-white rounded-lg" title="Browse / Inspect ${escapeHtml(u.username)}'s Directory"><i data-lucide="folder-open" class="w-4 h-4 text-white"></i></button>
+                      <button onclick="inspectUserDirectory('${u.id}', decodeURIComponent('${encodeURIComponent(u.username)}'))" class="p-1.5 text-slate-400 hover:text-white rounded-lg" title="Browse / Inspect ${escapeHtml(u.username)}'s Directory"><i data-lucide="folder-open" class="w-4 h-4 text-white"></i></button>
                       <button onclick="openEditUserModal('${u.id}')" class="p-1.5 text-slate-400 hover:text-white rounded-lg" title="Edit User & Quotas"><i data-lucide="pencil" class="w-4 h-4"></i></button>
-                      <button onclick="resetUserUsagePrompt('${u.id}', '${escapeHtml(u.username)}')" class="p-1.5 text-slate-400 hover:text-emerald-400 rounded-lg" title="Reset Monthly Bandwidth & API Cycle"><i data-lucide="rotate-ccw" class="w-4 h-4"></i></button>
+                      <button onclick="resetUserUsagePrompt('${u.id}', decodeURIComponent('${encodeURIComponent(u.username)}'))" class="p-1.5 text-slate-400 hover:text-emerald-400 rounded-lg" title="Reset Monthly Bandwidth & API Cycle"><i data-lucide="rotate-ccw" class="w-4 h-4"></i></button>
                       <button onclick="editUserQuotaPrompt('${u.id}', '${u.storage_quota_bytes}')" class="p-1.5 text-slate-400 hover:text-amber-400 rounded-lg" title="Edit Storage Quota"><i data-lucide="hard-drive" class="w-4 h-4"></i></button>
                       
                       <!-- OTP Verification Controls -->
                       ${!isSelf ? (u.requires_otp_verification
                         ? `
-                          <button onclick="handleLiftVerification('${u.id}', '${escapeHtml(u.username)}')" class="p-1.5 text-emerald-400 hover:bg-emerald-500/20 rounded-lg" title="Lift 4-Digit OTP Verification"><i data-lucide="shield-check" class="w-4 h-4"></i></button>
-                          <button onclick="handleAdminResendOtp('${u.id}', '${escapeHtml(u.username)}')" class="p-1.5 text-amber-400 hover:bg-amber-500/20 rounded-lg" title="Resend 4-Digit OTP Code via Email"><i data-lucide="mail" class="w-4 h-4"></i></button>
+                          <button onclick="handleLiftVerification('${u.id}', decodeURIComponent('${encodeURIComponent(u.username)}'))" class="p-1.5 text-emerald-400 hover:bg-emerald-500/20 rounded-lg" title="Lift 4-Digit OTP Verification"><i data-lucide="shield-check" class="w-4 h-4"></i></button>
+                          <button onclick="handleAdminResendOtp('${u.id}', decodeURIComponent('${encodeURIComponent(u.username)}'))" class="p-1.5 text-amber-400 hover:bg-amber-500/20 rounded-lg" title="Resend 4-Digit OTP Code via Email"><i data-lucide="mail" class="w-4 h-4"></i></button>
                         `
                         : `
-                          <button onclick="openPutOnVerificationModal('${u.id}', '${escapeHtml(u.username)}', '${escapeHtml(u.email)}', '${escapeHtml(u.name)}')" class="p-1.5 text-slate-400 hover:text-amber-400 hover:bg-amber-500/10 rounded-lg" title="Put on 4-Digit OTP Security Verification (Suspected)"><i data-lucide="shield-alert" class="w-4 h-4 text-amber-400"></i></button>
+                          <button onclick="openPutOnVerificationModal('${u.id}', decodeURIComponent('${encodeURIComponent(u.username)}'), decodeURIComponent('${encodeURIComponent(u.email || '')}'), decodeURIComponent('${encodeURIComponent(u.name || '')}'))" class="p-1.5 text-slate-400 hover:text-amber-400 hover:bg-amber-500/10 rounded-lg" title="Put on 4-Digit OTP Security Verification (Suspected)"><i data-lucide="shield-alert" class="w-4 h-4 text-amber-400"></i></button>
                         `
                       ) : ''}
 
                       ${!isSelf ? (u.is_suspended 
-                        ? `<button onclick="openUnsuspendUserModal('${u.id}', '${escapeHtml(u.username)}', '${escapeHtml(u.email)}', '${escapeHtml(u.name)}')" class="p-1.5 text-slate-400 hover:text-emerald-400 rounded-lg" title="Unsuspend / Reactivate User"><i data-lucide="check-circle" class="w-4 h-4 text-emerald-400"></i></button>` 
-                        : `<button onclick="openSuspendUserModal('${u.id}', '${escapeHtml(u.username)}', '${escapeHtml(u.email)}', '${escapeHtml(u.name)}')" class="p-1.5 text-slate-400 hover:text-red-400 rounded-lg" title="Suspend User (with Reason & Auto Mail)"><i data-lucide="ban" class="w-4 h-4 text-red-400"></i></button>`
+                        ? `<button onclick="openUnsuspendUserModal('${u.id}', decodeURIComponent('${encodeURIComponent(u.username)}'), decodeURIComponent('${encodeURIComponent(u.email || '')}'), decodeURIComponent('${encodeURIComponent(u.name || '')}'))" class="p-1.5 text-slate-400 hover:text-emerald-400 rounded-lg" title="Unsuspend / Reactivate User"><i data-lucide="check-circle" class="w-4 h-4 text-emerald-400"></i></button>` 
+                        : `<button onclick="openSuspendUserModal('${u.id}', decodeURIComponent('${encodeURIComponent(u.username)}'), decodeURIComponent('${encodeURIComponent(u.email || '')}'), decodeURIComponent('${encodeURIComponent(u.name || '')}'))" class="p-1.5 text-slate-400 hover:text-red-400 rounded-lg" title="Suspend User (with Reason & Auto Mail)"><i data-lucide="ban" class="w-4 h-4 text-red-400"></i></button>`
                       ) : ''}
-                      ${!isSelf ? `<button onclick="deleteUserPrompt('${u.id}', '${escapeHtml(u.username)}')" class="p-1.5 text-slate-400 hover:text-red-500 rounded-lg" title="Delete User"><i data-lucide="trash-2" class="w-4 h-4"></i></button>` : ''}
+                      ${!isSelf ? `<button onclick="deleteUserPrompt('${u.id}', decodeURIComponent('${encodeURIComponent(u.username)}'))" class="p-1.5 text-slate-400 hover:text-red-500 rounded-lg" title="Delete User"><i data-lucide="trash-2" class="w-4 h-4"></i></button>` : ''}
                     </div>
                   </div>`;
                 }).join('')}
